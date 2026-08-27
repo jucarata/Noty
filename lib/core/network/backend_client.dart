@@ -104,14 +104,22 @@ class BackendClient {
   }) async {
     try {
       final response = await _auth.signUp(email: email, password: password);
-      final user = response.user;
-      if (response.session == null || user == null) {
+      if (response.session != null && response.user != null) {
+        return _requireSession(response.user);
+      }
+
+      final identities = response.user?.identities ?? const [];
+      if (identities.isEmpty && response.user != null) {
         throw const BackendAuthException(
-          'Revisa tu correo para confirmar la cuenta. Luego podrás entrar.',
-          code: 'email_not_confirmed',
+          'Ya existe una cuenta con este correo. Probemos a entrar.',
+          code: 'email_exists',
         );
       }
-      return _requireSession(user);
+
+      throw const BackendAuthException(
+        'Revisa tu correo para confirmar la cuenta. Luego podrás entrar.',
+        code: 'email_not_confirmed',
+      );
     } on BackendAuthException {
       rethrow;
     } on AuthException catch (error) {
@@ -197,6 +205,10 @@ class BackendClient {
   }
 
   BackendAuthException _wrap(AuthException error) {
+    debugPrint(
+      'Auth error code=${error.code} status=${error.statusCode} '
+      'message=${error.message}',
+    );
     return BackendAuthException(error.message, code: error.code);
   }
 }

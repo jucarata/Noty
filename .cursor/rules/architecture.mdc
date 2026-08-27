@@ -21,7 +21,7 @@ La UI **no sabe** si lo remoto es Supabase o una API. Screens/widgets no importa
 
 - `notifications` → `Notificator` (crear, listar, confirmar, sync, alarmas)
 - `care` → `CareService` (vínculo familiar, dispositivos; tablas ya existen)
-- `auth` → `AuthService` (sesión; correo / Google / Microsoft / anónimo)
+- `auth` → `AuthService` (sesión; UI: LoginScreen y SignUpScreen. Google/Microsoft en la fachada, sin botones)
 - Futuro: `ReportsService` — no clonar el nombre Notificator
 
 Pantalla → fachada → local + `BackendClient`. Riverpod/Provider delega en la fachada. **No** un Notificator gigante en `core/`.

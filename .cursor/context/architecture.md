@@ -48,7 +48,7 @@ Cada módulo que persiste o sincroniza tiene **su** fachada de producto:
 |---|---|---|
 | `notifications` | `Notificator` | Crear, listar, confirmar, sincronizar recordatorios; programar alarmas |
 | `care` | p. ej. `CareService` | Vínculo familiar, dispositivos. Tablas en Postgres; fachada/UI aún no |
-| `auth` | p. ej. `AuthService` | Sesión (correo, Google, Microsoft, anónimo). Fachada/UI aún no |
+| `auth` | `AuthService` | Sesión. UI actual: correo y anónimo. Google/Microsoft están en la fachada, no en la pantalla. |
 | `reports` (futuro) | p. ej. `ReportsService` | Historial y cumplimiento |
 
 No se clona un “Notificator” por módulo. El nombre describe el dominio, no el hecho de que hable con internet.
@@ -109,7 +109,7 @@ lib/
   auth/
     models/                 ← AuthSession, AuthFailure
     services/               ← AuthService (fachada de sesión)
-    screens/                ← AuthScreen
+    screens/                ← LoginScreen, SignUpScreen
     widgets/                ← AuthGate
   home/
     screens/
