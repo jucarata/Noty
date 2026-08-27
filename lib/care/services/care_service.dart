@@ -1,6 +1,7 @@
 import 'package:noty/care/data/local/device_hardware_reader.dart';
 import 'package:noty/care/data/local/device_identity_store.dart';
 import 'package:noty/care/models/device_share_code.dart';
+import 'package:noty/care/models/linked_device.dart';
 import 'package:noty/core/network/backend_client.dart';
 
 /// Fachada de vínculo entre dispositivos.
@@ -74,6 +75,23 @@ class CareService {
     }
   }
 
+  /// Dispositivos acompañados de las familias donde esta cuenta cuida.
+  Future<List<LinkedDevice>> listLinkedDevices() async {
+    try {
+      final rows = await _client.fetchLinkedDevices();
+      return [
+        for (final row in rows)
+          if (row['id'] is String) LinkedDevice.fromMap(row),
+      ];
+    } on BackendAuthException catch (error) {
+      throw CareFailure(_copyForList(error));
+    } catch (_) {
+      throw const CareFailure(
+        'No pudimos cargar tus dispositivos. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
   String _copyFor(BackendAuthException error) {
     if (error.code == 'missing_session') {
       return 'Para compartir este dispositivo, entra a la app.';
@@ -102,5 +120,13 @@ class CareService {
     }
 
     return 'No pudimos vincular el dispositivo. Intentémoslo de nuevo.';
+  }
+
+  String _copyForList(BackendAuthException error) {
+    if (error.code == 'missing_session' ||
+        error.code == 'anonymous_not_allowed') {
+      return 'Para ver tus dispositivos, entra o crea una cuenta.';
+    }
+    return 'No pudimos cargar tus dispositivos. Intentémoslo de nuevo.';
   }
 }

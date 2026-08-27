@@ -234,6 +234,77 @@ class BackendClient {
     }
   }
 
+  /// Dispositivos acompañados de las familias donde quien llama cuida.
+  Future<List<Map<String, dynamic>>> fetchLinkedDevices() async {
+    final session = currentSession;
+    if (session == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para ver tus dispositivos.',
+        code: 'missing_session',
+      );
+    }
+    if (session.isAnonymous) {
+      throw const BackendAuthException(
+        'Inicia sesión para ver tus dispositivos.',
+        code: 'anonymous_not_allowed',
+      );
+    }
+
+    try {
+      final memberships = await _supabase
+          .from('family_members')
+          .select('family_id')
+          .inFilter('role', const ['host', 'caregiver']);
+
+      final familyIds = <String>{
+        for (final row in memberships)
+          if (row['family_id'] is String) row['family_id'] as String,
+      };
+      if (familyIds.isEmpty) {
+        return const [];
+      }
+
+      final rows = await _supabase
+          .from('family_members')
+          .select('devices(id, custom_name, brand, model, last_seen_at)')
+          .inFilter('family_id', familyIds.toList())
+          .eq('role', 'accompanied');
+
+      final devices = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final device = _asDeviceMap(row['devices']);
+        final id = device?['id'];
+        if (device == null || id is! String || id.isEmpty) {
+          continue;
+        }
+        devices[id] = device;
+      }
+
+      final list = devices.values.toList()
+        ..sort((a, b) {
+          final aSeen = a['last_seen_at'] as String? ?? '';
+          final bSeen = b['last_seen_at'] as String? ?? '';
+          return bSeen.compareTo(aSeen);
+        });
+      return list;
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  Map<String, dynamic>? _asDeviceMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    if (value is List && value.isNotEmpty) {
+      return _asDeviceMap(value.first);
+    }
+    return null;
+  }
+
   Future<BackendAuthSession> _convertAnonymousUser({
     required String email,
     required String password,
