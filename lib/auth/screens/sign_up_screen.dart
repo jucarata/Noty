@@ -52,6 +52,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     } on AuthFailure catch (error) {
       _showMessage(error.message);
     } catch (_) {

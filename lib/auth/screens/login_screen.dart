@@ -69,22 +69,57 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
-    await _run(() {
-      return _auth.signInWithEmail(
+    await _run(() async {
+      await _auth.signInWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      _popIfPushed();
+    });
+  }
+
+  Future<void> _continueWithoutAccount() async {
+    await _run(() async {
+      await _auth.continueWithoutAccount();
+      _popIfPushed();
     });
   }
 
   void _openSignUp() {
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const SignUpScreen()));
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => SignUpScreen(authService: _auth),
+          ),
+        )
+        .then((_) {
+          final session = _auth.currentSession;
+          if (session != null && !session.isAnonymous) {
+            _popIfPushed();
+          }
+        });
+  }
+
+  void _popIfPushed() {
+    if (!mounted) {
+      return;
+    }
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: Navigator.canPop(context)
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              foregroundColor: AppColors.azulNoty,
+            )
+          : null,
       body: SafeArea(
         child: AbsorbPointer(
           absorbing: _busy,
@@ -182,7 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed: () => _run(_auth.continueWithoutAccount),
+                        onPressed: _continueWithoutAccount,
                         child: const Text('Continuar sin cuenta'),
                       ),
                       if (_busy) ...[

@@ -102,6 +102,11 @@ class BackendClient {
     required String email,
     required String password,
   }) async {
+    final existing = currentSession;
+    if (existing != null && existing.isAnonymous) {
+      return _convertAnonymousUser(email: email, password: password);
+    }
+
     try {
       final response = await _auth.signUp(email: email, password: password);
       if (response.session != null && response.user != null) {
@@ -132,6 +137,11 @@ class BackendClient {
   Future<void> signInWithMicrosoft() => _signInWithOAuth(OAuthProvider.azure);
 
   Future<BackendAuthSession> signInAnonymously() async {
+    final existing = currentSession;
+    if (existing != null) {
+      return existing;
+    }
+
     try {
       final response = await _auth.signInAnonymously();
       return _requireSession(response.user);
@@ -155,6 +165,29 @@ class BackendClient {
       await _auth.signOut(scope: SignOutScope.local);
     } on PostgrestException catch (error) {
       throw BackendAuthException(error.message, code: error.code);
+    } on AuthException catch (error) {
+      throw _wrap(error);
+    }
+  }
+
+  Future<BackendAuthSession> _convertAnonymousUser({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await _auth.updateUser(
+        UserAttributes(email: email, password: password),
+      );
+      final session = _requireSession(response.user);
+      if (session.isAnonymous) {
+        throw const BackendAuthException(
+          'Revisa tu correo para confirmar la cuenta. Luego podrás entrar.',
+          code: 'email_not_confirmed',
+        );
+      }
+      return session;
+    } on BackendAuthException {
+      rethrow;
     } on AuthException catch (error) {
       throw _wrap(error);
     }

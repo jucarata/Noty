@@ -27,7 +27,7 @@ class _MainShellState extends State<MainShell> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          const HomeScreen(),
+          HomeScreen(authService: widget.authService),
           ProfileScreen(authService: widget.authService),
         ],
       ),

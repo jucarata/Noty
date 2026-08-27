@@ -59,6 +59,7 @@ class AuthService {
     }
   }
 
+  /// Si ya hay sesión (anónima o no), la reutiliza. No crea otro usuario.
   Future<AuthSession> continueWithoutAccount() async {
     try {
       return _mapRequired(await _client.signInAnonymously());

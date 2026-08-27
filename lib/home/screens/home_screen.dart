@@ -1,8 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:noty/auth/models/auth_session.dart';
+import 'package:noty/auth/screens/login_screen.dart';
+import 'package:noty/auth/services/auth_service.dart';
+import 'package:noty/core/theme/app_colors.dart';
 import 'package:noty/core/widgets/noty_logo.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, this.authService});
+
+  final AuthService? authService;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late final AuthService _auth;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = widget.authService ?? AuthService();
+  }
+
+  void _openLogin() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LoginScreen(authService: _auth),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,21 +37,46 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const NotyLogo(),
-              const SizedBox(height: 48),
-              FilledButton(
-                onPressed: () {},
-                child: const Text('Compartir este dispositivo'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () {},
-                child: const Text('Añadir un dispositivo'),
-              ),
-            ],
+          child: StreamBuilder<AuthSession?>(
+            initialData: _auth.currentSession,
+            stream: _auth.sessions,
+            builder: (context, snapshot) {
+              final canAddDevice = snapshot.data?.isAnonymous == false;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const NotyLogo(),
+                    const SizedBox(height: 48),
+                    FilledButton(
+                      onPressed: () {},
+                      child: const Text('Compartir este dispositivo'),
+                    ),
+                    const SizedBox(height: 12),
+                    if (canAddDevice)
+                      OutlinedButton(
+                        onPressed: () {},
+                        child: const Text('Añadir un dispositivo'),
+                      )
+                    else ...[
+                      Text(
+                        'Para añadir un dispositivo, entra o crea una cuenta.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: AppColors.grisMedio,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: _openLogin,
+                        child: const Text('Iniciar sesión'),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
