@@ -17,7 +17,12 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 48),
               FilledButton(
                 onPressed: () {},
-                child: const Text('Vincular dispositivo'),
+                child: const Text('Compartir este dispositivo'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () {},
+                child: const Text('Añadir un dispositivo'),
               ),
             ],
           ),
