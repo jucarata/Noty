@@ -42,39 +42,38 @@ class _HomeScreenState extends State<HomeScreen> {
             stream: _auth.sessions,
             builder: (context, snapshot) {
               final canAddDevice = snapshot.data?.isAnonymous == false;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const NotyLogo(),
-                    const SizedBox(height: 48),
-                    FilledButton(
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const NotyLogo(),
+                  const SizedBox(height: 48),
+                  FilledButton(
+                    onPressed: () {},
+                    child: const Text('Compartir este dispositivo'),
+                  ),
+                  const SizedBox(height: 12),
+                  if (canAddDevice)
+                    OutlinedButton(
                       onPressed: () {},
-                      child: const Text('Compartir este dispositivo'),
-                    ),
-                    const SizedBox(height: 12),
-                    if (canAddDevice)
-                      OutlinedButton(
-                        onPressed: () {},
-                        child: const Text('Añadir un dispositivo'),
-                      )
-                    else ...[
-                      Text(
+                      child: const Text('Añadir un dispositivo'),
+                    )
+                  else ...[
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 260),
+                      child: Text(
                         'Para añadir un dispositivo, entra o crea una cuenta.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppColors.grisMedio,
-                        ),
+                        style: Theme.of(context).textTheme.bodyLarge
+                            ?.copyWith(color: AppColors.grisMedio),
                       ),
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: _openLogin,
-                        child: const Text('Iniciar sesión'),
-                      ),
-                    ],
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: _openLogin,
+                      child: const Text('Iniciar sesión'),
+                    ),
                   ],
-                ),
+                ],
               );
             },
           ),
