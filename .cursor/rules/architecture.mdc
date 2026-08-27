@@ -1,0 +1,48 @@
+---
+description: Arquitectura de Noty — features, BackendClient, Notificator por dominio, offline-first
+alwaysApply: true
+---
+
+# Noty — arquitectura
+
+Fuente: `.cursor/context/architecture.md`.
+
+## Servicios
+
+En diseño: app móvil, backend, base de datos. En el MVP: Flutter + Supabase (sin API propia todavía).
+
+La UI **no sabe** si lo remoto es Supabase o una API. Screens/widgets no importan red ni DB.
+
+## Dos contratos
+
+**Tubo (uno):** `lib/core/network/backend_client.dart`. Única puerta al servidor. Hoy Supabase, mañana API. Las pantallas no lo llaman.
+
+**Fachada por feature (una por módulo que sincronice):** describe el dominio, no internet.
+
+- `notifications` → `Notificator` (crear, listar, confirmar, sync, alarmas)
+- Futuro: `CareService`, `AuthService`, `ReportsService` — no clonar el nombre Notificator
+
+Pantalla → fachada → local + `BackendClient`. Riverpod/Provider delega en la fachada. **No** un Notificator gigante en `core/`.
+
+## Offline-first
+
+La UI lee **solo local**. La red sincroniza. Las alarmas se programan desde la caché. Confirmar se guarda local y se encola si no hay internet.
+
+## Features
+
+Hermanas, no anidadas. `home` es el dashboard. Compartido en `core/`.
+
+```
+lib/core/network/backend_client.dart
+lib/home/
+lib/notifications/{models,data/local,data/remote,services,screens,widgets}
+```
+
+No usar Clean Architecture de 4 capas ni Bloc por defecto.
+
+## No hacer
+
+- Lógica de recordatorios en `home` o en widgets.
+- Screens importando `BackendClient` o Supabase.
+- Servidor Nest/Express/FastAPI hasta que haga falta (WhatsApp, jobs, alertas).
+- Microservicios.

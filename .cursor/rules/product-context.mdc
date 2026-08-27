@@ -1,0 +1,36 @@
+---
+description: Producto, marca y UX de Noty — personas, alcance del MVP, tono y principios de diseño
+alwaysApply: true
+---
+
+# Noty — contexto de producto
+
+Fuente de producto: `.cursor/context/brand-and-product.md`. Arquitectura: `.cursor/context/architecture.md`.
+
+## Qué es
+
+App móvil de **recordatorios, acompañamiento y cuidado**. Esencia: **Noty — Recordar es cuidar.** Emoción: **tranquilidad**.
+
+No es una app de productividad genérica ni una app médica/hospitalaria.
+
+Tres pilares: **Recordar + Confirmar + Acompañar**.
+
+## Personas
+
+- **Acompañada:** recibe recordatorios. UI muy simple, botones grandes, pocos pasos, sin configuración compleja.
+- **Cuidadora:** crea y administra recordatorios. En el MVP puede ser la misma persona; gestión remota, reportes y alertas son visión futura.
+
+## Alcance
+
+**MVP (construir):** crear recordatorio (título, descripción, hora, periodicidad), notificación/alarma, confirmar que se hizo.
+
+**No construir** salvo pedido explícito: gestión remota, reportes, alertas a familiares, WhatsApp, asistente con IA, cuentas de cuidador vs acompañada.
+
+## UI y marca
+
+Dirección: moderna, limpia, humana, confiable. Paleta en `lib/core/theme/app_colors.dart` (azul profundo marca, azul medio CTA, verde/turquesa confirmación). Isotype: `assets/images/branding/noty_isotype.png`.
+
+- Claridad antes que decoración.
+- Accesible: texto grande, contraste, pocas acciones por pantalla.
+- Confirmación inmediata y evidente al completar una tarea.
+- Copy cercano y empático. Evitar tono de sistema ("Proceso ejecutado"). Preferir "¡Listo! Has confirmado esta tarea." / "No pudimos guardar el recordatorio. Intentémoslo nuevamente."
