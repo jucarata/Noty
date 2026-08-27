@@ -58,6 +58,22 @@ class AppTheme {
         labelMedium: GoogleFonts.poppins(fontWeight: FontWeight.w500),
         labelSmall: GoogleFonts.poppins(fontWeight: FontWeight.w500),
       ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: AppColors.blanco,
+        selectedItemColor: AppColors.azulNoty,
+        unselectedItemColor: AppColors.grisMedio,
+        showUnselectedLabels: true,
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+        selectedLabelStyle: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.azulNoty,

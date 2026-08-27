@@ -3,7 +3,7 @@ import 'package:noty/auth/screens/login_screen.dart';
 import 'package:noty/auth/widgets/auth_gate.dart';
 import 'package:noty/core/network/backend_client.dart';
 import 'package:noty/core/theme/app_theme.dart';
-import 'package:noty/home/screens/home_screen.dart';
+import 'package:noty/home/screens/main_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +18,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: AppTheme.light,
-      home: const AuthGate(signedIn: HomeScreen(), signedOut: LoginScreen()),
+      home: const AuthGate(signedIn: MainShell(), signedOut: LoginScreen()),
     );
   }
 }
