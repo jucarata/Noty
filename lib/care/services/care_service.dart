@@ -45,10 +45,62 @@ class CareService {
     }
   }
 
+  /// Lee el QR de otro teléfono y lo une a la familia de quien escanea.
+  Future<void> addDeviceFromSharePayload(String payload) async {
+    final code = DeviceShareCode.tryParse(payload);
+    if (code == null) {
+      throw const CareFailure(
+        'Ese código no es de Noty. Pide que vuelva a mostrarlo.',
+      );
+    }
+
+    try {
+      final ownId = await _identityStore.getOrCreateInstallId();
+      if (code.installId.toLowerCase() == ownId.toLowerCase()) {
+        throw const CareFailure(
+          'Ese es este mismo teléfono. Pide el código del otro dispositivo.',
+        );
+      }
+
+      await _client.linkDeviceToFamily(installId: code.installId);
+    } on CareFailure {
+      rethrow;
+    } on BackendAuthException catch (error) {
+      throw CareFailure(_copyForAdd(error));
+    } catch (_) {
+      throw const CareFailure(
+        'No pudimos vincular el dispositivo. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
   String _copyFor(BackendAuthException error) {
     if (error.code == 'missing_session') {
       return 'Para compartir este dispositivo, entra a la app.';
     }
     return 'No pudimos preparar el código. Intentémoslo de nuevo.';
+  }
+
+  String _copyForAdd(BackendAuthException error) {
+    if (error.code == 'missing_session' ||
+        error.code == 'anonymous_not_allowed') {
+      return 'Para añadir un dispositivo, entra o crea una cuenta.';
+    }
+
+    final message = error.message.trim();
+    if (message.contains('No encontramos ese dispositivo')) {
+      return 'No encontramos ese dispositivo. Pide que vuelva a mostrar el código.';
+    }
+    if (message.contains('Inicia sesión') || message.contains('Debes entrar')) {
+      return 'Para añadir un dispositivo, entra o crea una cuenta.';
+    }
+    if (message.contains('No puedes vincular')) {
+      return 'No pudimos vincular este dispositivo a tu grupo familiar.';
+    }
+    if (message.contains('invalid input syntax')) {
+      return 'Ese código no es de Noty. Pide que vuelva a mostrarlo.';
+    }
+
+    return 'No pudimos vincular el dispositivo. Intentémoslo de nuevo.';
   }
 }

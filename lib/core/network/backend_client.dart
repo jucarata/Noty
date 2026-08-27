@@ -186,19 +186,48 @@ class BackendClient {
     }
 
     try {
-      await _supabase.from('devices').upsert(
-        {
-          'install_id': installId,
-          'owner_id': ownerId,
-          'platform': platform,
-          'device_kind': deviceKind,
-          'brand': ?brand,
-          'model': ?model,
-          'os_version': ?osVersion,
-          'custom_name': ?customName,
-          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        onConflict: 'install_id',
+      await _supabase.from('devices').upsert({
+        'install_id': installId,
+        'owner_id': ownerId,
+        'platform': platform,
+        'device_kind': deviceKind,
+        'brand': ?brand,
+        'model': ?model,
+        'os_version': ?osVersion,
+        'custom_name': ?customName,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'install_id');
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Vincula el device del QR a la familia del usuario actual (host).
+  ///
+  /// Si aún no hay familia, el RPC crea “Mi familia”. El device queda como
+  /// acompañado: el host y el resto de miembros del grupo quedan relacionados.
+  Future<void> linkDeviceToFamily({
+    required String installId,
+    String? familyId,
+  }) async {
+    final session = currentSession;
+    if (session == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para vincular un dispositivo.',
+        code: 'missing_session',
+      );
+    }
+    if (session.isAnonymous) {
+      throw const BackendAuthException(
+        'Inicia sesión para vincular un dispositivo.',
+        code: 'anonymous_not_allowed',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'link_device_to_family',
+        params: {'p_install_id': installId, 'p_family_id': ?familyId},
       );
     } on PostgrestException catch (error) {
       throw BackendAuthException(error.message, code: error.code);
