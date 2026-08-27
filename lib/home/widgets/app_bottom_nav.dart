@@ -8,6 +8,9 @@ class AppBottomNav extends StatelessWidget {
     required this.onTap,
   });
 
+  static const homeIndex = 0;
+  static const profileIndex = 1;
+
   final int selectedIndex;
   final ValueChanged<int> onTap;
 

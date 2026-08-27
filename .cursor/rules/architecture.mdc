@@ -37,7 +37,8 @@ Hermanas, no anidadas. `home` es el dashboard. Compartido en `core/`.
 ```
 lib/core/network/backend_client.dart
 lib/auth/{models,services,screens,widgets}   ← AuthService, AuthGate
-lib/home/
+lib/home/                                    ← HomeScreen, MainShell
+lib/profile/{screens}                        ← ProfileScreen (cuenta; usa AuthService)
 lib/notifications/{models,data/local,data/remote,services,screens,widgets}
 ```
 

@@ -98,7 +98,7 @@ Features **hermanas**. `home` no agrupa al resto. Lo compartido va en `core`.
 
 ```
 lib/
-  main.dart                 ← AuthGate: sesión persistida → home o login
+  main.dart                 ← AuthGate: sesión persistida → MainShell o login
   core/
     constants/
     theme/
@@ -112,8 +112,10 @@ lib/
     screens/                ← LoginScreen, SignUpScreen
     widgets/                ← AuthGate
   home/
-    screens/
+    screens/                ← HomeScreen, MainShell (footer con sesión)
     widgets/
+  profile/
+    screens/                ← ProfileScreen
   notifications/
     models/
     data/
@@ -146,7 +148,9 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 **Sí**
 
-- `home/screens` → `notifications/services` (Notificator) o `auth/services` (AuthService, p. ej. cerrar sesión temporal en home).
+- `home/screens` → `notifications/services` (Notificator).
+- `home/screens` (MainShell) → `home` y `profile` (tabs del footer).
+- `profile/screens` → `auth/services` (AuthService: cerrar sesión, purgar).
 - `auth/screens` y `auth/widgets` → `auth/services` (AuthService).
 - `notifications/services` → `data/local`, `data/remote` y `core/network`.
 - `auth/services` → `core/network` (`BackendClient`).
