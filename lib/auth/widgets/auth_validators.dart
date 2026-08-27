@@ -3,10 +3,23 @@ class AuthValidators {
 
   static const minPasswordLength = 8;
 
+  static const _placeholderDomains = {
+    'example.com',
+    'example.net',
+    'example.org',
+    'test.com',
+    'invalid',
+    'localhost',
+  };
+
   static String? email(String? value) {
     final email = value?.trim() ?? '';
     if (email.isEmpty || !email.contains('@')) {
       return 'Escribe un correo válido.';
+    }
+    final domain = email.split('@').last.toLowerCase();
+    if (_placeholderDomains.contains(domain)) {
+      return 'Usa un correo real (Gmail, Outlook…). Ese dominio es solo de prueba.';
     }
     return null;
   }

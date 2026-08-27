@@ -121,10 +121,7 @@ class BackendClient {
         );
       }
 
-      throw const BackendAuthException(
-        'Revisa tu correo para confirmar la cuenta. Luego podrás entrar.',
-        code: 'email_not_confirmed',
-      );
+      return _requireSession(response.user);
     } on BackendAuthException {
       rethrow;
     } on AuthException catch (error) {
@@ -178,6 +175,7 @@ class BackendClient {
     String? brand,
     String? model,
     String? osVersion,
+    String? customName,
   }) async {
     final ownerId = currentSession?.userId;
     if (ownerId == null) {
@@ -197,6 +195,7 @@ class BackendClient {
           'brand': ?brand,
           'model': ?model,
           'os_version': ?osVersion,
+          'custom_name': ?customName,
           'last_seen_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'install_id',
@@ -214,14 +213,7 @@ class BackendClient {
       final response = await _auth.updateUser(
         UserAttributes(email: email, password: password),
       );
-      final session = _requireSession(response.user);
-      if (session.isAnonymous) {
-        throw const BackendAuthException(
-          'Revisa tu correo para confirmar la cuenta. Luego podrás entrar.',
-          code: 'email_not_confirmed',
-        );
-      }
-      return session;
+      return _requireSession(response.user);
     } on BackendAuthException {
       rethrow;
     } on AuthException catch (error) {

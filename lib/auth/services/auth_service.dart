@@ -116,6 +116,9 @@ class AuthService {
       case 'over_email_send_rate_limit':
         return 'Supabase pausó los registros un rato (límite del plan gratis). '
             'Espera unos minutos o entra con Continuar sin cuenta.';
+      case 'email_address_invalid':
+      case 'email_address_not_authorized':
+        return 'Ese correo no es válido para crear la cuenta. Prueba con uno real, como Gmail u Outlook.';
       case 'validation_failed':
         return 'Revisa el correo y la contraseña e intentémoslo de nuevo.';
       case 'weak_password':
