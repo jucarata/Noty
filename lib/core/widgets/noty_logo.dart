@@ -13,11 +13,7 @@ class NotyLogo extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Image.asset(
-          AppAssets.notyIsotype,
-          width: size,
-          height: size,
-        ),
+        Image.asset(AppAssets.notyIsotype, width: size, height: size),
         const SizedBox(height: 12),
         Text(
           'Noty',

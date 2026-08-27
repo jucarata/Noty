@@ -54,15 +54,9 @@ class AppTheme {
           color: AppColors.grisOscuro,
           fontWeight: FontWeight.w500,
         ),
-        labelLarge: GoogleFonts.poppins(
-          fontWeight: FontWeight.w600,
-        ),
-        labelMedium: GoogleFonts.poppins(
-          fontWeight: FontWeight.w500,
-        ),
-        labelSmall: GoogleFonts.poppins(
-          fontWeight: FontWeight.w500,
-        ),
+        labelLarge: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        labelMedium: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+        labelSmall: GoogleFonts.poppins(fontWeight: FontWeight.w500),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -76,6 +70,40 @@ class AppTheme {
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.azulNoty,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          side: const BorderSide(color: AppColors.grisClaro),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          textStyle: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.blanco,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.grisClaro),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.grisClaro),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.azulMedio, width: 2),
         ),
       ),
     );

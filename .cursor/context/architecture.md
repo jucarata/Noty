@@ -34,6 +34,8 @@ Vive en `lib/core/network/backend_client.dart`.
 
 Es el servicio con el que la app habla **externamente**. Hoy encapsula Supabase; mañana una API propia. Auth, base URL, timeouts y “¿hay red?” viven aquí.
 
+Las claves públicas se inyectan en **compile-time** con `--dart-define-from-file=.env` (no se empaquetan como asset). Si faltan, `BackendClient.initialize` falla. En local: F5 (config **noty**), args en `.vscode/settings.json`, o `.\scripts\run.ps1`. En CI, el mismo flag con el archivo de ese entorno.
+
 Las pantallas **no** lo llaman. Solo las capas `data/remote` o los services de cada feature.
 
 No se llama Notificator: cuando existan reportes, vínculo familiar o auth, el tubo sigue siendo el mismo y el nombre seguiría siendo mentira.
@@ -45,8 +47,8 @@ Cada módulo que persiste o sincroniza tiene **su** fachada de producto:
 | Feature | Fachada | Responsabilidad |
 |---|---|---|
 | `notifications` | `Notificator` | Crear, listar, confirmar, sincronizar recordatorios; programar alarmas |
-| `care` (futuro) | p. ej. `CareService` | Vínculo familiar, dispositivos |
-| `auth` (futuro) | p. ej. `AuthService` | Sesión |
+| `care` | p. ej. `CareService` | Vínculo familiar, dispositivos. Tablas en Postgres; fachada/UI aún no |
+| `auth` | p. ej. `AuthService` | Sesión (correo, Google, Microsoft, anónimo). Fachada/UI aún no |
 | `reports` (futuro) | p. ej. `ReportsService` | Historial y cumplimiento |
 
 No se clona un “Notificator” por módulo. El nombre describe el dominio, no el hecho de que hable con internet.
@@ -96,14 +98,19 @@ Features **hermanas**. `home` no agrupa al resto. Lo compartido va en `core`.
 
 ```
 lib/
-  main.dart
+  main.dart                 ← AuthGate: sesión persistida → home o login
   core/
     constants/
     theme/
     widgets/
     network/
-      backend_client.dart   ← único tubo al servidor
+      backend_client.dart   ← único tubo al servidor (incluye auth técnico)
     storage/                ← setup de la base local (cuando exista)
+  auth/
+    models/                 ← AuthSession, AuthFailure
+    services/               ← AuthService (fachada de sesión)
+    screens/                ← AuthScreen
+    widgets/                ← AuthGate
   home/
     screens/
     widgets/
@@ -117,7 +124,9 @@ lib/
     widgets/
 ```
 
-Más adelante pueden nacer `auth/`, `care/`, `reports/` como features nuevas, cada una con su fachada, todas usando el mismo `BackendClient`.
+`care/` y `reports/` nacerán como features hermanas, cada una con su fachada, todas usando el mismo `BackendClient`. El esquema de identidad y familia ya está en `supabase/migrations/`.
+
+Sesión: `supabase_flutter` la guarda en el dispositivo. Al reabrir la app (aunque se haya cerrado del todo), `AuthGate` lee esa sesión. Anónimo y cuenta real cuentan como “ya entró”. Redirect OAuth: `com.noty.noty://login-callback` (también en Authentication → URL Configuration de Supabase).
 
 Assets de imagen en `assets/images/…`. Documentos de marca en `docs/`, no empaquetados en la app.
 
@@ -137,8 +146,10 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 **Sí**
 
-- `home/screens` → `notifications/services` (Notificator) o navegación a screens de notifications.
+- `home/screens` → `notifications/services` (Notificator) o `auth/services` (AuthService, p. ej. cerrar sesión temporal en home).
+- `auth/screens` y `auth/widgets` → `auth/services` (AuthService).
 - `notifications/services` → `data/local`, `data/remote` y `core/network`.
+- `auth/services` → `core/network` (`BackendClient`).
 - `data/remote` de cualquier feature → `BackendClient`.
 - Cualquier feature → `core/`.
 
@@ -155,7 +166,7 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 **Backend:** verdad compartida entre dispositivos y, a futuro, avisar a otras personas.
 
-**Base de datos:** persistencia canónica de recordatorios, confirmaciones y (luego) vínculos familiares.
+**Base de datos:** persistencia canónica de personas, dispositivos, grupos familiares, y (luego) recordatorios y confirmaciones. Esquema en la sección 10.
 
 ## 9. Qué no hacer
 
@@ -164,3 +175,103 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 - Un único “Notificator” para auth, recordatorios y reportes.
 - Crear un servidor propio antes de que un recordatorio suene offline.
 - Microservicios. Un backend, una base, una app.
+- Tabla `public.users` (choca con `auth.users`). La persona es `profiles`.
+- Usar IMEI / `ANDROID_ID` / `identifierForVendor` como identidad. El dispositivo se identifica con `devices.install_id` generado por la app.
+
+## 10. Modelo de datos (Postgres / Supabase)
+
+SQL canónico: `supabase/migrations/20260827010000_care_identity.sql`.
+
+La app Flutter **aún no** expone pantallas de auth ni de vínculo. Este esquema es la verdad en la nube para cuando existan `AuthService` y `CareService`.
+
+### Idea
+
+Hay tres entidades, no una tabla “users” con el id del celular:
+
+1. **Persona** (`profiles`) — quien es. Correo, Google, Microsoft o anónimo comparten el mismo `id` (`auth.users.id`).
+2. **Dispositivo** (`devices`) — un install de la app. Identidad = `install_id` (UUID que genera Noty y guarda en secure storage). Eso va en el QR.
+3. **Grupo familiar** (`families` + `family_members`) — quién cuida a quién.
+
+“Continuar sin login” (p. ej. un abuelo sin correo) **no** es un hueco sin fila: es **Auth anónimo** de Supabase. Hay `auth.uid()`, se crea `profiles`, se registra el `device`, y RLS funciona. Al reabrir la app, la sesión anónima + el `install_id` local permiten cargar los padres asociados.
+
+Hay que activar **Allow anonymous sign-ins** en Authentication → Sign In / Providers cuando se implemente ese flujo. Crear familia y escanear QR siguen bloqueados para anónimos (solo cuenta real).
+
+### Tablas
+
+**`profiles`**
+
+| Columna | Notas |
+|---|---|
+| `id` | PK = `auth.users.id`. Trigger `handle_new_user` al registrarse (incluido anónimo). |
+| `display_name` | Nombre visible. Google/Microsoft pueden traerlo en metadata. |
+| `created_at`, `updated_at` | |
+
+**`devices`**
+
+| Columna | Notas |
+|---|---|
+| `id` | PK interno |
+| `install_id` | Unique. Lo genera la app. **No** es el id de hardware del SO. |
+| `owner_id` | Profile que usa este teléfono. Un padre con celular y tablet = dos filas. |
+| `custom_name` | “Celular de la abuela” |
+| `platform` | `android` \| `ios` |
+| `brand`, `model` | Samsung, Apple, Galaxy A54, iPhone 13… |
+| `device_kind` | `phone` \| `tablet` |
+| `os_version` | Opcional |
+| `last_seen_at` | Última vez que abrió la app |
+
+Si desinstalan la app, se pierde el `install_id` (secure storage). Hay que volver a vincular. El id del SO no lo evita de forma fiable.
+
+**`families`**
+
+| Columna | Notas |
+|---|---|
+| `host_id` | Profile **no anónimo** que creó el grupo |
+| `name` | “Familia Pérez” |
+
+**`family_members`**
+
+| Columna | Notas |
+|---|---|
+| `family_id`, `profile_id` | Persona en ese grupo |
+| `device_id` | Obligatorio si `role = accompanied` (el teléfono del QR). Null en host/caregiver |
+| `role` | `host` \| `caregiver` \| `accompanied` |
+
+Un mismo profile puede ser `host` en la familia A y `accompanied` en la B. Un device puede estar en **varias** familias (varios padres con grupos distintos).
+
+Al reabrir el teléfono del abuelo: membresías `accompanied` de ese `device` → miembros `host` / `caregiver` de esas familias = padres asociados.
+
+### Cómo mutar (no desde la UI todavía)
+
+| Acción | Cómo |
+|---|---|
+| Nuevo auth (cualquier provider o anónimo) | Trigger → `profiles` |
+| Registrar/actualizar este teléfono | Insert/update en `devices` con `owner_id = auth.uid()` |
+| Padre crea grupo | RPC `create_family(p_name)` |
+| Padre escanea QR | RPC `link_device_to_family(p_install_id, p_family_id?)`. Si no hay familia, crea “Mi familia”. |
+| Purgar cuenta (**temporal**, pruebas en home) | RPC `purge_own_account` + cierre de sesión local. Quitar con el botón cuando exista Profile. |
+
+No hay políticas de INSERT directo en `families` ni `family_members`. Así un cliente no enumera ni reclama devices ajenos: hace falta el `install_id` del QR.
+
+### RLS (resumen)
+
+Quien llama es `authenticated` (sesión real o anónima). Sin sesión, nada.
+
+- `profiles`: leer el propio y a quienes comparten familia; editar solo el propio.
+- `devices`: el dueño CRUD el suyo; miembros de la familia leen el device acompañado.
+- `families` / `family_members`: leer si eres miembro; el host puede renombrar la familia.
+
+### Flujos de producto ↔ datos
+
+| En la app | En la base |
+|---|---|
+| Continuar sin login | `signInAnonymously` → `profiles` + `devices` |
+| QR “vincularse a grupo familiar” | payload = `install_id` |
+| Padre escanea | `link_device_to_family` → member `accompanied` |
+| Otro hijo escanea el mismo QR | el device entra en **su** familia (segundo padre) |
+| Padres al reabrir (abuelo) | carers de las familias de este device |
+| Yo cuido y a mí me cuidan | el mismo `profile` en dos `families` con roles distintos |
+
+Invitar a un segundo cuidador **al mismo** grupo (recordatorios compartidos) es un paso posterior (`invites`). Hoy, dos padres = dos familias que comparten el device.
+
+Recordatorios y confirmaciones **no** están en este esquema todavía.
