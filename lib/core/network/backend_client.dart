@@ -170,6 +170,42 @@ class BackendClient {
     }
   }
 
+  /// Registra o actualiza este install. El QR lleva [installId].
+  Future<void> upsertOwnDevice({
+    required String installId,
+    required String platform,
+    required String deviceKind,
+    String? brand,
+    String? model,
+    String? osVersion,
+  }) async {
+    final ownerId = currentSession?.userId;
+    if (ownerId == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para compartir este dispositivo.',
+        code: 'missing_session',
+      );
+    }
+
+    try {
+      await _supabase.from('devices').upsert(
+        {
+          'install_id': installId,
+          'owner_id': ownerId,
+          'platform': platform,
+          'device_kind': deviceKind,
+          'brand': ?brand,
+          'model': ?model,
+          'os_version': ?osVersion,
+          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'install_id',
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
   Future<BackendAuthSession> _convertAnonymousUser({
     required String email,
     required String password,

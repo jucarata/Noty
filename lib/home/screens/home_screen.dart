@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:noty/auth/models/auth_session.dart';
 import 'package:noty/auth/screens/login_screen.dart';
 import 'package:noty/auth/services/auth_service.dart';
+import 'package:noty/care/screens/share_device_screen.dart';
 import 'package:noty/core/theme/app_colors.dart';
 import 'package:noty/core/widgets/noty_logo.dart';
 
@@ -31,6 +32,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openShareDevice() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ShareDeviceScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const NotyLogo(),
                   const SizedBox(height: 48),
                   FilledButton(
-                    onPressed: () {},
+                    onPressed: _openShareDevice,
                     child: const Text('Compartir este dispositivo'),
                   ),
                   const SizedBox(height: 12),
