@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:noty/care/data/local/device_hardware_reader.dart';
 import 'package:noty/care/data/local/device_identity_store.dart';
 import 'package:noty/care/models/device_share_code.dart';
@@ -24,10 +25,38 @@ class CareService {
   /// Prepara el código de este teléfono: guarda el install_id, registra el
   /// dispositivo y devuelve lo que va en el QR.
   Future<DeviceShareCode> shareThisDevice() async {
+    final registered = await registerThisDevice();
+    return DeviceShareCode(installId: registered.installId);
+  }
+
+  /// Registra este install en la nube.
+  ///
+  /// Si el install ya pertenece a otra cuenta, genera uno nuevo y reintenta.
+  Future<({String installId, String deviceId})> registerThisDevice() async {
     try {
-      final installId = await _identityStore.getOrCreateInstallId();
-      final hardware = await _hardwareReader.read();
-      await _client.upsertOwnDevice(
+      return await _register(allowRotate: true);
+    } on CareFailure {
+      rethrow;
+    } on BackendAuthException catch (error) {
+      debugPrint(
+        'Noty register device: code=${error.code} message=${error.message}',
+      );
+      throw CareFailure(_copyFor(error));
+    } catch (error, stack) {
+      debugPrint('Noty register device: $error\n$stack');
+      throw const CareFailure(
+        'No pudimos preparar el código. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
+  Future<({String installId, String deviceId})> _register({
+    required bool allowRotate,
+  }) async {
+    final installId = await _identityStore.getOrCreateInstallId();
+    final hardware = await _hardwareReader.read();
+    try {
+      final deviceId = await _client.upsertOwnDevice(
         installId: installId,
         platform: hardware.platform,
         deviceKind: hardware.deviceKind,
@@ -36,13 +65,14 @@ class CareService {
         osVersion: hardware.osVersion,
         customName: hardware.defaultCustomName,
       );
-      return DeviceShareCode(installId: installId);
+      return (installId: installId, deviceId: deviceId);
     } on BackendAuthException catch (error) {
-      throw CareFailure(_copyFor(error));
-    } catch (_) {
-      throw const CareFailure(
-        'No pudimos preparar el código. Intentémoslo de nuevo.',
-      );
+      if (allowRotate && error.code == 'device_taken') {
+        debugPrint('Noty register device: install_id ocupado, se genera otro');
+        await _identityStore.rotateInstallId();
+        return _register(allowRotate: false);
+      }
+      rethrow;
     }
   }
 

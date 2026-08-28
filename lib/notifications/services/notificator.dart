@@ -1,31 +1,143 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:noty/core/network/backend_client.dart';
 import 'package:noty/notifications/models/new_reminder.dart';
 import 'package:noty/notifications/models/reminder.dart';
+import 'package:noty/notifications/screens/alarm_ring_screen.dart';
+import 'package:noty/notifications/services/alarm_scheduler.dart';
+import 'package:noty/notifications/services/alarm_sound_player.dart';
+import 'package:noty/notifications/services/reminder_sync.dart';
+import 'package:noty/notifications/services/timezone_config.dart';
 
 /// Fachada de la feature notifications.
 ///
-/// Las pantallas hablan solo con esta clase. Hoy persiste en la nube;
-/// la caché local y las alarmas del SO se enganchan después.
+/// Las pantallas hablan solo con esta clase. Lee la caché local, sincroniza
+/// con la nube y programa las alarmas del sistema operativo.
 class Notificator {
-  Notificator({BackendClient? client})
-    : _client = client ?? BackendClient.instance;
+  Notificator._({
+    required AlarmScheduler scheduler,
+    BackendClient? client,
+    ReminderSync? sync,
+  }) : _scheduler = scheduler,
+       _client = client ?? BackendClient.instance,
+       _sync = sync ?? ReminderSync(scheduler: scheduler);
+
+  static final Notificator instance = () {
+    final scheduler = AlarmScheduler();
+    return Notificator._(
+      scheduler: scheduler,
+      sync: ReminderSync(scheduler: scheduler),
+    );
+  }();
+
+  factory Notificator({
+    BackendClient? client,
+    ReminderSync? sync,
+    AlarmScheduler? scheduler,
+  }) {
+    if (client != null || sync != null || scheduler != null) {
+      final sharedScheduler = scheduler ?? AlarmScheduler();
+      return Notificator._(
+        scheduler: sharedScheduler,
+        client: client,
+        sync: sync ?? ReminderSync(scheduler: sharedScheduler),
+      );
+    }
+    return instance;
+  }
 
   final BackendClient _client;
+  final ReminderSync _sync;
+  final AlarmScheduler _scheduler;
+
+  GlobalKey<NavigatorState>? _navigatorKey;
+  var _initialized = false;
+  Completer<void>? _initCompleter;
+  final _localChanges = StreamController<void>.broadcast();
+
+  Stream<void> get localChanges => _localChanges.stream;
+
+  bool get isInitialized => _initialized;
+
+  /// Espera a que [initialize] termine (alarmas listas para programarse).
+  Future<void> ensureReady() async {
+    if (_initialized) {
+      return;
+    }
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+      return;
+    }
+    throw StateError(
+      'Notificator aún no arrancó. MainShell debe llamar initialize() primero.',
+    );
+  }
+
+  Future<void> initialize({required GlobalKey<NavigatorState> navigatorKey}) async {
+    _navigatorKey = navigatorKey;
+    if (_initialized) {
+      return;
+    }
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+
+    _initCompleter = Completer<void>();
+    try {
+      await configureDeviceTimezone();
+      await _scheduler.initialize(onAlarmTap: _openAlarmFromPayload);
+      await _sync.startListening(_notifyLocalChange);
+      await _sync.sync(onLocalChange: _notifyLocalChange);
+      _initialized = true;
+      _initCompleter!.complete();
+      debugPrint('Noty: inicializado; alarmas pendientes=${await _scheduler.pendingCount()}');
+      await _openPendingNativeAlarm();
+    } catch (error, stack) {
+      _initCompleter!.completeError(error, stack);
+      _initCompleter = null;
+      rethrow;
+    }
+  }
+
+  Future<void> dispose() async {
+    await _sync.stopListening();
+    await _localChanges.close();
+    _initialized = false;
+    _initCompleter = null;
+  }
+
+  void _notifyLocalChange() {
+    if (!_localChanges.isClosed) {
+      _localChanges.add(null);
+    }
+  }
+
+  Future<void> refresh() async {
+    await ensureReady();
+    await _sync.sync(onLocalChange: _notifyLocalChange);
+  }
 
   /// Crea el recordatorio y lo asigna a los teléfonos elegidos.
-  Future<void> createReminder(NewReminder reminder) {
-    return _upsert(reminder);
+  Future<void> createReminder(NewReminder reminder) async {
+    await ensureReady();
+    await _upsert(reminder);
+    await refresh();
   }
 
   /// Guarda cambios de un recordatorio existente y sus teléfonos.
-  Future<void> updateReminder(String id, NewReminder reminder) {
-    return _upsert(reminder, id: id);
+  Future<void> updateReminder(String id, NewReminder reminder) async {
+    await ensureReady();
+    await _upsert(reminder, id: id);
+    await refresh();
   }
 
   /// Elimina el recordatorio (soft delete) y lo desvincula de todos los devices.
   Future<void> deleteReminder(String id) async {
     try {
       await _client.deleteReminder(id: id);
+      await _scheduler.cancelReminder(id);
+      await refresh();
     } on BackendAuthException catch (error) {
       throw NotificatorFailure(_copyForDelete(error));
     } catch (_) {
@@ -33,6 +145,91 @@ class Notificator {
         'No pudimos eliminar el recordatorio. Intentémoslo nuevamente.',
       );
     }
+  }
+
+  /// Recordatorios para pintar la lista. Siempre desde la caché local.
+  Future<List<Reminder>> listReminders() async {
+    if (!_initialized) {
+      try {
+        await ensureReady();
+      } catch (_) {
+        return _sync.readLocalReminders();
+      }
+    }
+
+    final reminders = await _sync.readLocalReminders();
+    reminders.sort(_byNextThenCreated);
+    return reminders;
+  }
+
+  /// Confirma que se completó la tarea de esta ocurrencia.
+  Future<void> confirmOccurrence({
+    required String reminderId,
+    required DateTime dueAt,
+  }) {
+    return _respond(
+      reminderId: reminderId,
+      dueAt: dueAt,
+      response: 'confirmed',
+    );
+  }
+
+  /// Marca la ocurrencia como ignorada (p. ej. tras 90 s sin confirmar).
+  Future<void> ignoreOccurrence({
+    required String reminderId,
+    required DateTime dueAt,
+  }) {
+    return _respond(
+      reminderId: reminderId,
+      dueAt: dueAt,
+      response: 'ignored',
+    );
+  }
+
+  Future<void> _respond({
+    required String reminderId,
+    required DateTime dueAt,
+    required String response,
+  }) async {
+    await _sync.applyLocalResponse(
+      reminderId: reminderId,
+      dueAt: dueAt.toUtc(),
+      response: response,
+    );
+    _notifyLocalChange();
+  }
+
+  Future<void> _openPendingNativeAlarm() async {
+    final payload = await _scheduler.consumeNativeLaunchPayload();
+    if (payload == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_openAlarmFromPayload(payload));
+    });
+  }
+
+  Future<void> _openAlarmFromPayload(AlarmPayload payload) async {
+    final reminder = await _sync.findReminder(payload.reminderId);
+    if (reminder == null) {
+      await refresh();
+      return;
+    }
+
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) {
+      return;
+    }
+
+    final route = MaterialPageRoute<void>(
+      builder: (_) => AlarmRingScreen(
+        reminder: reminder,
+        dueAt: payload.dueAt.toLocal(),
+      ),
+      fullscreenDialog: true,
+    );
+
+    await navigator.push(route);
   }
 
   Future<void> _upsert(NewReminder reminder, {String? id}) async {
@@ -84,24 +281,6 @@ class Notificator {
     } catch (_) {
       throw const NotificatorFailure(
         'No pudimos guardar el recordatorio. Intentémoslo nuevamente.',
-      );
-    }
-  }
-
-  /// Recordatorios para pintar la lista. Orden: el que suena más pronto.
-  Future<List<Reminder>> listReminders() async {
-    try {
-      final rows = await _client.fetchReminders();
-      final reminders = [
-        for (final row in rows)
-          if (row['id'] is String) Reminder.fromMap(row),
-      ]..sort(_byNextThenCreated);
-      return reminders;
-    } on BackendAuthException catch (error) {
-      throw NotificatorFailure(_copyForList(error));
-    } catch (_) {
-      throw const NotificatorFailure(
-        'No pudimos cargar tus recordatorios. Intentémoslo de nuevo.',
       );
     }
   }
@@ -161,13 +340,6 @@ class Notificator {
     }
 
     return 'No pudimos guardar el recordatorio. Intentémoslo nuevamente.';
-  }
-
-  String _copyForList(BackendAuthException error) {
-    if (error.code == 'missing_session') {
-      return 'Para ver tus recordatorios, entra a la app.';
-    }
-    return 'No pudimos cargar tus recordatorios. Intentémoslo de nuevo.';
   }
 
   String _copyForDelete(BackendAuthException error) {

@@ -46,7 +46,7 @@ Cada módulo que persiste o sincroniza tiene **su** fachada de producto:
 
 | Feature | Fachada | Responsabilidad |
 |---|---|---|
-| `notifications` | `Notificator` | Crear, editar, eliminar, listar recordatorios; confirmar y programar alarmas (aún no). Ver `notifications.md`. |
+| `notifications` | `Notificator` | Crear, editar, eliminar, listar, confirmar, sync y alarmas del SO. Detalle operativo e **iOS pendiente**: `notifications.md`. |
 | `care` | `CareService` | Vínculo familiar, dispositivos. UI en tab Familia + pantallas de QR. |
 | `auth` | `AuthService` | Sesión. UI actual: correo y anónimo. Google/Microsoft están en la fachada, no en la pantalla. |
 | `reports` (futuro) | p. ej. `ReportsService` | Historial y cumplimiento |
@@ -190,7 +190,7 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 SQL canónico: `supabase/migrations/` (`care_identity`, `reminders`).
 
-Auth, vínculo familiar y el alta/edición de recordatorios ya están en la app. Mutar usa RPCs `create_reminder`, `update_reminder` y `delete_reminder` (RLS de lectura + sin insert directo). Caché local y alarmas, todavía no.
+Auth, vínculo familiar, recordatorios y **caché local + alarmas (Android)** ya están en la app. Mutar usa RPCs `create_reminder`, `update_reminder`, `delete_reminder` y `respond_to_reminder`. Sync vía Realtime + reconexión (sin polling). **iOS sin paridad** — ver `notifications.md` § iOS.
 
 ### Idea
 
@@ -295,7 +295,7 @@ Sin fila = todavía no hay respuesta (el teléfono no contestó). Las alertas fu
 | Acción | Cómo |
 |---|---|
 | Nuevo auth (cualquier provider o anónimo) | Trigger → `profiles` |
-| Registrar/actualizar este teléfono | Insert/update en `devices` con `owner_id = auth.uid()` |
+| Registrar/actualizar este teléfono | RPC `register_own_device(...)` → `devices`. Solo el propio `install_id`. Si ya es de otra cuenta, la app genera otro. |
 | Padre crea grupo | RPC `create_family(p_name)` |
 | Padre escanea QR | RPC `link_device_to_family(p_install_id, p_family_id?)`. Si no hay familia, crea “Mi familia”. |
 | Padre crea recordatorio | RPC `create_reminder(...)` → `reminders` + `reminder_devices`. Solo cuenta real; devices de familiares acompañados. |

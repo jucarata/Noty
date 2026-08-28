@@ -25,6 +25,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   late final Notificator _notificator;
+  StreamSubscription<void>? _localSubscription;
 
   var _loading = true;
   List<Reminder> _reminders = const [];
@@ -33,25 +34,66 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    _notificator = widget.notificator ?? Notificator();
-    unawaited(_load());
+    _notificator = widget.notificator ?? Notificator.instance;
+    _localSubscription = _notificator.localChanges.listen((_) {
+      if (mounted) {
+        unawaited(_loadFromCache());
+      }
+    });
+    unawaited(_bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    await _notificator.ensureReady();
+    if (!mounted) {
+      return;
+    }
+    await _load(syncFromNetwork: true);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_localSubscription?.cancel());
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant NotificationsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelected && !oldWidget.isSelected) {
-      unawaited(_load());
+      unawaited(_load(syncFromNetwork: true));
     }
   }
 
-  Future<void> _load() async {
-    final showSpinner = _reminders.isEmpty && _error == null;
-    if (showSpinner) {
+  /// Solo repinta desde caché (el sync ya lo hizo quien disparó el cambio).
+  Future<void> _loadFromCache() async {
+    try {
+      final reminders = await _notificator.listReminders();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _reminders = reminders;
+        _error = null;
+        _loading = false;
+      });
+    } on NotificatorFailure catch (error) {
+      _fail(error.message);
+    } catch (_) {
+      _fail('No pudimos cargar tus recordatorios. Intentémoslo de nuevo.');
+    }
+  }
+
+  Future<void> _load({bool showSpinner = true, bool syncFromNetwork = false}) async {
+    final shouldShowSpinner = showSpinner && _reminders.isEmpty && _error == null;
+    if (shouldShowSpinner) {
       setState(() => _loading = true);
     }
 
     try {
+      if (syncFromNetwork) {
+        await _notificator.refresh();
+      }
       final reminders = await _notificator.listReminders();
       if (!mounted) {
         return;
@@ -96,7 +138,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
     if (mounted) {
-      await _load();
+      await _load(syncFromNetwork: true);
     }
   }
 
@@ -110,7 +152,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
     if (mounted) {
-      await _load();
+      await _load(syncFromNetwork: true);
     }
   }
 
@@ -183,7 +225,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(syncFromNetwork: true),
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),

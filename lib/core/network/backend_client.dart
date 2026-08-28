@@ -168,7 +168,10 @@ class BackendClient {
   }
 
   /// Registra o actualiza este install. El QR lleva [installId].
-  Future<void> upsertOwnDevice({
+  ///
+  /// Devuelve `devices.id`. Si el install pertenece a otra cuenta, lanza
+  /// [BackendAuthException] con código `device_taken`.
+  Future<String> upsertOwnDevice({
     required String installId,
     required String platform,
     required String deviceKind,
@@ -186,20 +189,115 @@ class BackendClient {
     }
 
     try {
-      await _supabase.from('devices').upsert({
-        'install_id': installId,
-        'owner_id': ownerId,
-        'platform': platform,
-        'device_kind': deviceKind,
-        'brand': ?brand,
-        'model': ?model,
-        'os_version': ?osVersion,
-        'custom_name': ?customName,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-      }, onConflict: 'install_id');
+      final result = await _supabase.rpc(
+        'register_own_device',
+        params: {
+          'p_install_id': installId,
+          'p_platform': platform,
+          'p_device_kind': deviceKind,
+          'p_brand': brand,
+          'p_model': model,
+          'p_os_version': osVersion,
+          'p_custom_name': customName,
+        },
+      );
+      final id = _asNonEmptyString(result);
+      if (id == null) {
+        throw const BackendAuthException(
+          'No pudimos registrar este teléfono.',
+          code: 'device_register_failed',
+        );
+      }
+      return id;
+    } on BackendAuthException {
+      rethrow;
     } on PostgrestException catch (error) {
-      throw BackendAuthException(error.message, code: error.code);
+      debugPrint(
+        'Noty register_own_device: code=${error.code} message=${error.message}',
+      );
+      if (_isMissingRpc(error, 'register_own_device')) {
+        return _upsertOwnDeviceDirect(
+          installId: installId,
+          ownerId: ownerId,
+          platform: platform,
+          deviceKind: deviceKind,
+          brand: brand,
+          model: model,
+          osVersion: osVersion,
+          customName: customName,
+        );
+      }
+      throw _wrapDeviceRegister(error);
     }
+  }
+
+  Future<String> _upsertOwnDeviceDirect({
+    required String installId,
+    required String ownerId,
+    required String platform,
+    required String deviceKind,
+    String? brand,
+    String? model,
+    String? osVersion,
+    String? customName,
+  }) async {
+    try {
+      final row = await _supabase
+          .from('devices')
+          .upsert({
+            'install_id': installId,
+            'owner_id': ownerId,
+            'platform': platform,
+            'device_kind': deviceKind,
+            'brand': ?brand,
+            'model': ?model,
+            'os_version': ?osVersion,
+            'custom_name': ?customName,
+            'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+          }, onConflict: 'install_id', defaultToNull: false)
+          .select('id')
+          .maybeSingle();
+      final id = _asNonEmptyString(row?['id']);
+      if (id == null) {
+        throw const BackendAuthException(
+          'Este dispositivo ya está vinculado a otra cuenta.',
+          code: 'device_taken',
+        );
+      }
+      return id;
+    } on BackendAuthException {
+      rethrow;
+    } on PostgrestException catch (error) {
+      debugPrint(
+        'Noty devices upsert: code=${error.code} message=${error.message}',
+      );
+      throw _wrapDeviceRegister(error);
+    }
+  }
+
+  BackendAuthException _wrapDeviceRegister(PostgrestException error) {
+    final message = error.message;
+    if (error.code == '23505' ||
+        message.contains('otra cuenta') ||
+        message.contains('duplicate key')) {
+      return BackendAuthException(message, code: 'device_taken');
+    }
+    return BackendAuthException(message, code: error.code);
+  }
+
+  bool _isMissingRpc(PostgrestException error, String name) {
+    return error.code == 'PGRST202' || error.message.contains(name);
+  }
+
+  String? _asNonEmptyString(Object? value) {
+    if (value is List && value.isNotEmpty) {
+      return _asNonEmptyString(value.first);
+    }
+    if (value == null) {
+      return null;
+    }
+    final text = value is String ? value.trim() : value.toString().trim();
+    return text.isEmpty || text == 'null' ? null : text;
   }
 
   /// Vincula el device del QR a la familia del usuario actual (host).
@@ -455,6 +553,80 @@ class BackendClient {
       'p_run_days': runDays,
       'p_device_ids': deviceIds,
     };
+  }
+
+  /// Resuelve devices.id a partir del install_id local.
+  Future<String?> fetchDeviceIdByInstallId({required String installId}) async {
+    if (currentSession == null) {
+      return null;
+    }
+
+    try {
+      final row = await _supabase
+          .from('devices')
+          .select('id')
+          .eq('install_id', installId)
+          .maybeSingle();
+      final id = row?['id'];
+      return id is String ? id : null;
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Confirma o ignora una ocurrencia que sonó en este teléfono.
+  Future<void> respondToReminder({
+    required String reminderId,
+    required DateTime dueAt,
+    required String response,
+  }) async {
+    if (currentSession == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para responder.',
+        code: 'missing_session',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'respond_to_reminder',
+        params: {
+          'p_reminder_id': reminderId,
+          'p_due_at': dueAt.toUtc().toIso8601String(),
+          'p_response': response,
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Suscripción a cambios de recordatorios. El callback debe ser liviano.
+  ({Future<void> Function() dispose}) subscribeReminderChanges(
+    void Function() onChange,
+  ) {
+    final userId = currentSession?.userId ?? 'anon';
+    final channel = _supabase
+        .channel('noty-reminders-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'reminders',
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'reminder_devices',
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+
+    return (
+      dispose: () async {
+        await _supabase.removeChannel(channel);
+      },
+    );
   }
 
   /// Recordatorios vigentes de quien llama, con los devices asignados.

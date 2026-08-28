@@ -1,5 +1,5 @@
 ---
-description: Estado del módulo notifications — alta persiste; no rehacer el flujo visual
+description: Estado del módulo notifications — alarmas, sync y pendientes iOS
 globs: lib/notifications/**/*.dart
 alwaysApply: false
 ---
@@ -11,15 +11,21 @@ Fuente: `.cursor/context/notifications.md`.
 ## Ya está (no rehacer)
 
 - Tab **Notificaciones** en el footer, entre Inicio y Familia.
-- Lista de recordatorios (nombre, descripción, hora, próximo día, familiar, Activa/Inactiva). `+` crea; tocar la tarjeta edita.
-- Paso 1: nombre, descripción, hora, fecha de inicio, zona, frecuencia (una vez / todos los días / elegir días), duración si se repite.
-- Paso 2: devices familiares con check. Guardar → `Notificator.createReminder` o `updateReminder`. Eliminar → `deleteReminder`.
-- Pantallas → `Notificator` → `BackendClient`. No importar red/DB desde la UI.
+- Lista desde **caché local** (sync con nube). `+` crea; tocar la tarjeta edita.
+- Paso 1 y 2 de alta/edición (flujo visual fijo).
+- **Alarmas Android:** programación exacta, pantalla `AlarmRingScreen`, check verde, timeout 90 s, sonido sistema.
+- **Sync:** Realtime + reconexión + foreground. Sin polling.
+- Confirmar / ignorar → `reminder_responses` (RPC `respond_to_reminder`).
+- Pantallas → `Notificator` → caché / sync / alarmas. No importar red/DB desde la UI.
 
-## Datos
+## Comportamiento clave (ver doc completa)
 
-RPC `create_reminder` escribe `reminders` + `reminder_devices`. `update_reminder` reemplaza los devices. `delete_reminder` es soft delete y desvincula todos. RLS de lectura. `run_days` null si `single_use` o no termina.
+- Padre edita/borra → hijo actualiza **cuando sincroniza** (Realtime, red, abrir app). Sin FCM aún.
+- Reinicio Android → alarmas futuras del plugin se remontan solas. Batería muerta en la hora = ocurrencia perdida.
+- **iOS: no paridad.** Notificación sí; alarma full-screen y loop no. Ver checklist en `notifications.md`.
 
-## Siguiente (solo si se pide)
+## Pendiente (no implementar salvo pedido)
 
-Listar (hecho, desde la nube). Caché local, alarmas, confirmar/ignorar.
+- FCM/APNs para sync con app cerrada.
+- Boot handler que relea caché local.
+- iOS: permisos, UX, sonido, pruebas reales.

@@ -70,6 +70,72 @@ class Reminder {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'time_local': '${hour.toString().padLeft(2, '0')}:'
+          '${minute.toString().padLeft(2, '0')}:00',
+      'timezone': timezone,
+      'start_date': _formatDateOnly(startDate),
+      'created_at': createdAt.toUtc().toIso8601String(),
+      'every_day': everyDay,
+      'monday': monday,
+      'tuesday': tuesday,
+      'wednesday': wednesday,
+      'thursday': thursday,
+      'friday': friday,
+      'saturday': saturday,
+      'sunday': sunday,
+      'run_days': runDays,
+      'single_use': singleUse,
+      'is_active': isActive,
+      'reminder_devices': [
+        for (final device in devices)
+          {
+            'devices': {
+              'id': device.id,
+              'custom_name': device.customName,
+            },
+          },
+      ],
+    };
+  }
+
+  /// Si [dueAt] ya pasó, devuelve la siguiente ocurrencia después de [dueAt].
+  DateTime? nextAtAfter(DateTime dueAt) {
+    if (!isActive) {
+      return null;
+    }
+
+    final anchor = DateTime(dueAt.year, dueAt.month, dueAt.day);
+    var cursor = anchor.add(const Duration(days: 1));
+
+    for (var i = 0; i < 800; i++) {
+      if (_hasAlarmOn(cursor)) {
+        return DateTime(cursor.year, cursor.month, cursor.day, hour, minute);
+      }
+      if (runDays != null && _alarmCountThrough(cursor) >= runDays!) {
+        break;
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return null;
+  }
+
+  /// True si este recordatorio debe sonar en [deviceId].
+  bool ringsOnDevice(String deviceId) {
+    return devices.any((device) => device.id == deviceId);
+  }
+
+  static String _formatDateOnly(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
   /// Hora visible. Ej. A las 8:00 a. m.
   String get timeLabel => 'A las ${_formatTime(hour, minute)}';
 

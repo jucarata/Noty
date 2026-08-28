@@ -451,8 +451,8 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
                 _isEditing
-                    ? 'El recordatorio quedó actualizado en los teléfonos que elegiste.'
-                    : 'Ya está unido a los teléfonos que elegiste.',
+                    ? 'El recordatorio quedó actualizado. En cada teléfono elegido, Noty debe estar abierto al menos una vez (o con internet) para que suene a la hora.'
+                    : 'En cada teléfono elegido, abre Noty al menos una vez para que suene a la hora. Si ya está abierto, sonará solo.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge
                     ?.copyWith(color: AppColors.grisMedio),
