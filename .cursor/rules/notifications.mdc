@@ -11,7 +11,7 @@ Fuente: `.cursor/context/notifications.md`.
 ## Ya está (no rehacer)
 
 - Tab **Notificaciones** en el footer, entre Inicio y Familia.
-- Lista aún vacía (no lista de la nube) + `+` → `AddNotificationScreen`.
+- Lista de recordatorios (nombre, descripción, hora, próximo día, familiar) + `+` → `AddNotificationScreen`.
 - Paso 1: nombre, descripción, hora, fecha de inicio, zona, frecuencia (una vez / todos los días / elegir días), duración si se repite.
 - Paso 2: devices familiares con check. Guardar → `Notificator.createReminder`.
 - Pantallas → `Notificator` → `BackendClient`. No importar red/DB desde la UI.
@@ -22,4 +22,4 @@ RPC `create_reminder` escribe `reminders` + `reminder_devices`. RLS de lectura. 
 
 ## Siguiente (solo si se pide)
 
-Listar, caché local, alarmas, confirmar/ignorar.
+Listar (hecho, desde la nube). Caché local, alarmas, confirmar/ignorar.

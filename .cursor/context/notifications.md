@@ -8,11 +8,12 @@ El tab **Notificaciones** está en el footer de `MainShell`, entre Inicio y Fami
 
 | Pieza | Dónde |
 |---|---|
-| Lista | `lib/notifications/screens/notifications_screen.dart` (aún vacía: no lista de la nube) |
+| Lista | `lib/notifications/screens/notifications_screen.dart` — tarjetas desde la nube |
 | Alta en 2 pasos | `lib/notifications/screens/add_notification_screen.dart` |
 | Tile de device con check | `lib/notifications/widgets/notification_device_tile.dart` |
-| Fachada | `lib/notifications/services/notificator.dart` — `createReminder` |
-| Draft | `lib/notifications/models/new_reminder.dart` |
+| Tarjeta de lista | `lib/notifications/widgets/reminder_card.dart` |
+| Fachada | `lib/notifications/services/notificator.dart` — `createReminder`, `listReminders` |
+| Modelos | `new_reminder.dart`, `reminder.dart` |
 
 El `+` abre `AddNotificationScreen`. **Guardar notificación** llama a `Notificator` → `BackendClient.createReminder` → RPC `create_reminder`.
 
@@ -43,9 +44,8 @@ Prioridad: `single_use` → `every_day` → días + `run_days`. Alarmas y apagad
 
 ## Qué no hacer todavía
 
-- No listar recordatorios en el tab (sigue el empty state).
 - No caché local, ni alarmas del SO, ni confirmar/ignorar.
 
 ## Siguiente paso (cuando se pida)
 
-Listar (la UI lee local cuando exista; hasta entonces se puede bajar de la nube). Programar alarmas desde la caché. Confirmar / ignorar → `reminder_responses`.
+Caché local y programar alarmas desde ella. Confirmar / ignorar → `reminder_responses`.

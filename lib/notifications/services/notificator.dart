@@ -1,5 +1,6 @@
 import 'package:noty/core/network/backend_client.dart';
 import 'package:noty/notifications/models/new_reminder.dart';
+import 'package:noty/notifications/models/reminder.dart';
 
 /// Fachada de la feature notifications.
 ///
@@ -41,6 +42,43 @@ class Notificator {
     }
   }
 
+  /// Recordatorios para pintar la lista. Orden: el que suena más pronto.
+  Future<List<Reminder>> listReminders() async {
+    try {
+      final rows = await _client.fetchReminders();
+      final reminders = [
+        for (final row in rows)
+          if (row['id'] is String) Reminder.fromMap(row),
+      ]..sort(_byNextThenCreated);
+      return reminders;
+    } on BackendAuthException catch (error) {
+      throw NotificatorFailure(_copyForList(error));
+    } catch (_) {
+      throw const NotificatorFailure(
+        'No pudimos cargar tus recordatorios. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
+  int _byNextThenCreated(Reminder a, Reminder b) {
+    final nextA = a.nextAt;
+    final nextB = b.nextAt;
+    if (nextA == null && nextB == null) {
+      return b.createdAt.compareTo(a.createdAt);
+    }
+    if (nextA == null) {
+      return 1;
+    }
+    if (nextB == null) {
+      return -1;
+    }
+    final byNext = nextA.compareTo(nextB);
+    if (byNext != 0) {
+      return byNext;
+    }
+    return b.createdAt.compareTo(a.createdAt);
+  }
+
   String _formatTime(int hour, int minute) {
     final h = hour.toString().padLeft(2, '0');
     final m = minute.toString().padLeft(2, '0');
@@ -75,5 +113,12 @@ class Notificator {
     }
 
     return 'No pudimos guardar el recordatorio. Intentémoslo nuevamente.';
+  }
+
+  String _copyForList(BackendAuthException error) {
+    if (error.code == 'missing_session') {
+      return 'Para ver tus recordatorios, entra a la app.';
+    }
+    return 'No pudimos cargar tus recordatorios. Intentémoslo de nuevo.';
   }
 }

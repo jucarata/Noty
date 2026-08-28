@@ -352,6 +352,35 @@ class BackendClient {
     }
   }
 
+  /// Recordatorios vigentes de quien llama, con los devices asignados.
+  Future<List<Map<String, dynamic>>> fetchReminders() async {
+    if (currentSession == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para ver tus recordatorios.',
+        code: 'missing_session',
+      );
+    }
+
+    try {
+      final rows = await _supabase
+          .from('reminders')
+          .select(
+            'id, name, description, time_local, timezone, start_date, '
+            'every_day, monday, tuesday, wednesday, thursday, friday, '
+            'saturday, sunday, run_days, single_use, is_active, created_at, '
+            'reminder_devices(devices(id, custom_name, brand, model))',
+          )
+          .isFilter('deleted_at', null)
+          .order('created_at', ascending: false);
+
+      return [
+        for (final row in rows) Map<String, dynamic>.from(row),
+      ];
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
   Map<String, dynamic>? _asDeviceMap(dynamic value) {
     if (value is Map<String, dynamic>) {
       return value;

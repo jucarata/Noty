@@ -51,7 +51,9 @@ class _MainShellState extends State<MainShell> {
             },
             children: [
               HomeScreen(authService: _auth),
-              const NotificationsScreen(),
+              NotificationsScreen(
+                isSelected: selected == AppDestination.notifications,
+              ),
               if (showFamily)
                 FamilyScreen(isSelected: selected == AppDestination.family)
               else
