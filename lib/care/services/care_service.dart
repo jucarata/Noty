@@ -75,10 +75,10 @@ class CareService {
     }
   }
 
-  /// Dispositivos acompañados de las familias donde esta cuenta cuida.
-  Future<List<LinkedDevice>> listLinkedDevices() async {
+  /// Familiares acompañados de los grupos donde esta cuenta es host.
+  Future<List<LinkedDevice>> listFamilyMembers() async {
     try {
-      final rows = await _client.fetchLinkedDevices();
+      final rows = await _client.fetchFamilyMembers();
       return [
         for (final row in rows)
           if (row['id'] is String) LinkedDevice.fromMap(row),
@@ -87,14 +87,14 @@ class CareService {
       throw CareFailure(_copyForList(error));
     } catch (_) {
       throw const CareFailure(
-        'No pudimos cargar tus dispositivos. Intentémoslo de nuevo.',
+        'No pudimos cargar tu familia. Intentémoslo de nuevo.',
       );
     }
   }
 
   String _copyFor(BackendAuthException error) {
     if (error.code == 'missing_session') {
-      return 'Para compartir este dispositivo, entra a la app.';
+      return 'Para compartir el código de vinculación, entra a la app.';
     }
     return 'No pudimos preparar el código. Intentémoslo de nuevo.';
   }
@@ -102,7 +102,7 @@ class CareService {
   String _copyForAdd(BackendAuthException error) {
     if (error.code == 'missing_session' ||
         error.code == 'anonymous_not_allowed') {
-      return 'Para añadir un dispositivo, entra o crea una cuenta.';
+      return 'Para añadir un miembro familiar, entra o crea una cuenta.';
     }
 
     final message = error.message.trim();
@@ -110,7 +110,7 @@ class CareService {
       return 'No encontramos ese dispositivo. Pide que vuelva a mostrar el código.';
     }
     if (message.contains('Inicia sesión') || message.contains('Debes entrar')) {
-      return 'Para añadir un dispositivo, entra o crea una cuenta.';
+      return 'Para añadir un miembro familiar, entra o crea una cuenta.';
     }
     if (message.contains('No puedes vincular')) {
       return 'No pudimos vincular este dispositivo a tu grupo familiar.';
@@ -125,8 +125,8 @@ class CareService {
   String _copyForList(BackendAuthException error) {
     if (error.code == 'missing_session' ||
         error.code == 'anonymous_not_allowed') {
-      return 'Para ver tus dispositivos, entra o crea una cuenta.';
+      return 'Para ver tu familia, entra o crea una cuenta.';
     }
-    return 'No pudimos cargar tus dispositivos. Intentémoslo de nuevo.';
+    return 'No pudimos cargar tu familia. Intentémoslo de nuevo.';
   }
 }

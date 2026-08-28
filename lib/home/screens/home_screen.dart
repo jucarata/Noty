@@ -60,19 +60,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 48),
                   FilledButton(
                     onPressed: _openShareDevice,
-                    child: const Text('Compartir este dispositivo'),
+                    child: const Text('Compartir código de vinculación'),
                   ),
                   const SizedBox(height: 12),
                   if (canAddDevice)
                     OutlinedButton(
                       onPressed: _openAddDevice,
-                      child: const Text('Añadir un dispositivo'),
+                      child: const Text('Añadir miembro familiar'),
                     )
                   else ...[
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 260),
                       child: Text(
-                        'Para añadir un dispositivo, entra o crea una cuenta.',
+                        'Para añadir un miembro familiar, entra o crea una cuenta.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyLarge
                             ?.copyWith(color: AppColors.grisMedio),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:noty/core/theme/app_colors.dart';
 
-enum AppDestination { home, devices, profile }
+enum AppDestination { home, family, profile }
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
@@ -15,10 +15,10 @@ class AppBottomNav extends StatelessWidget {
   final AppDestination selected;
   final ValueChanged<AppDestination> onSelected;
 
-  static List<AppDestination> destinationsFor({required bool showDevices}) {
+  static List<AppDestination> destinationsFor({required bool showFamily}) {
     return [
       AppDestination.home,
-      if (showDevices) AppDestination.devices,
+      if (showFamily) AppDestination.family,
       AppDestination.profile,
     ];
   }
@@ -54,10 +54,10 @@ class AppBottomNav extends StatelessWidget {
         activeIcon: Icon(Icons.home_rounded),
         label: 'Inicio',
       ),
-      AppDestination.devices => const BottomNavigationBarItem(
-        icon: Icon(Icons.devices_outlined),
-        activeIcon: Icon(Icons.devices_rounded),
-        label: 'Dispositivos',
+      AppDestination.family => const BottomNavigationBarItem(
+        icon: Icon(Icons.people_outline),
+        activeIcon: Icon(Icons.people_rounded),
+        label: 'Familia',
       ),
       AppDestination.profile => const BottomNavigationBarItem(
         icon: Icon(Icons.person_outline),

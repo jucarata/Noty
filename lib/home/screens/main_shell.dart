@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:noty/auth/models/auth_session.dart';
 import 'package:noty/auth/services/auth_service.dart';
-import 'package:noty/devices/screens/devices_screen.dart';
+import 'package:noty/family/screens/family_screen.dart';
 import 'package:noty/home/screens/home_screen.dart';
 import 'package:noty/home/widgets/app_bottom_nav.dart';
 import 'package:noty/profile/screens/profile_screen.dart';
 
-/// Marco con sesión: footer de la app. Cambia entre inicio, dispositivos y perfil.
+/// Marco con sesión: footer de la app. Cambia entre inicio, familia y perfil.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.authService});
 
@@ -32,9 +32,9 @@ class _MainShellState extends State<MainShell> {
       initialData: _auth.currentSession,
       stream: _auth.sessions,
       builder: (context, snapshot) {
-        final showDevices = snapshot.data?.isAnonymous == false;
+        final showFamily = snapshot.data?.isAnonymous == false;
         final destinations = AppBottomNav.destinationsFor(
-          showDevices: showDevices,
+          showFamily: showFamily,
         );
         final selected = destinations.contains(_selected)
             ? _selected
@@ -44,13 +44,13 @@ class _MainShellState extends State<MainShell> {
           body: IndexedStack(
             index: switch (selected) {
               AppDestination.home => 0,
-              AppDestination.devices => 1,
+              AppDestination.family => 1,
               AppDestination.profile => 2,
             },
             children: [
               HomeScreen(authService: _auth),
-              if (showDevices)
-                DevicesScreen(isSelected: selected == AppDestination.devices)
+              if (showFamily)
+                FamilyScreen(isSelected: selected == AppDestination.family)
               else
                 const SizedBox.shrink(),
               ProfileScreen(authService: _auth),

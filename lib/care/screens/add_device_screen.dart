@@ -95,7 +95,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: AppColors.azulNoty,
-        title: const Text('Añadir un dispositivo'),
+        title: const Text('Añadir miembro familiar'),
       ),
       body: SafeArea(child: _done ? _success(context) : _scannerBody(context)),
     );
@@ -129,7 +129,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                   vertical: 16,
                 ),
                 child: Text(
-                  'Escanea el código del otro dispositivo para enviarle recordatorios.',
+                  'Escanea el código de vinculación de tu familiar para acompañarlo.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge
                       ?.copyWith(color: AppColors.grisMedio),
@@ -187,7 +187,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                '¡Listo! Este dispositivo ya está vinculado.',
+                '¡Listo! Ya añadiste a este familiar.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge,
               ),

@@ -234,18 +234,18 @@ class BackendClient {
     }
   }
 
-  /// Dispositivos acompañados de las familias donde quien llama cuida.
-  Future<List<Map<String, dynamic>>> fetchLinkedDevices() async {
+  /// Teléfonos de familiares acompañados en los grupos donde quien llama cuida.
+  Future<List<Map<String, dynamic>>> fetchFamilyMembers() async {
     final session = currentSession;
     if (session == null) {
       throw const BackendAuthException(
-        'Debes entrar a la app para ver tus dispositivos.',
+        'Debes entrar a la app para ver tu familia.',
         code: 'missing_session',
       );
     }
     if (session.isAnonymous) {
       throw const BackendAuthException(
-        'Inicia sesión para ver tus dispositivos.',
+        'Inicia sesión para ver tu familia.',
         code: 'anonymous_not_allowed',
       );
     }

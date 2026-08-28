@@ -70,7 +70,7 @@ class _ShareDeviceScreenState extends State<ShareDeviceScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: AppColors.azulNoty,
-        title: const Text('Compartir este dispositivo'),
+        title: const Text('Compartir código de vinculación'),
       ),
       body: SafeArea(
         child: Center(
@@ -121,7 +121,7 @@ class _ShareDeviceScreenState extends State<ShareDeviceScreen> {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 280),
           child: Text(
-            'Que la otra persona escanee este código para enviarte recordatorios.',
+            'Que tu familiar escanee este código para unirse a tu grupo.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,

@@ -1,4 +1,4 @@
-/// Dispositivo acompañado vinculado a la familia de quien cuida.
+/// Teléfono de un familiar acompañado, bajo el cuidado del host.
 class LinkedDevice {
   const LinkedDevice({
     required this.id,
@@ -24,16 +24,16 @@ class LinkedDevice {
     );
   }
 
-  /// Nombre para reconocer el dispositivo.
+  /// Nombre del familiar o de su teléfono.
   String get displayName {
     final name = customName?.trim();
     if (name != null && name.isNotEmpty) {
       return name;
     }
-    return 'Dispositivo vinculado';
+    return 'Familiar';
   }
 
-  /// Marca y modelo juntos, listos para mostrar.
+  /// Marca y modelo del teléfono, listos para mostrar.
   String get brandModel {
     final brandName = brand?.trim();
     final modelName = model?.trim();
@@ -53,6 +53,15 @@ class LinkedDevice {
       return modelName;
     }
     return '$brandName $modelName';
+  }
+
+  /// Descripción del teléfono del familiar.
+  String get phoneDescription {
+    final details = brandModel;
+    if (details == 'Marca y modelo no disponibles') {
+      return 'Teléfono sin datos de marca o modelo';
+    }
+    return 'Teléfono: $details';
   }
 
   /// Última vez que ese teléfono abrió Noty.

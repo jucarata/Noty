@@ -6,24 +6,24 @@ import 'package:noty/care/models/linked_device.dart';
 import 'package:noty/care/screens/add_device_screen.dart';
 import 'package:noty/care/services/care_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
-import 'package:noty/devices/widgets/linked_device_card.dart';
+import 'package:noty/family/widgets/family_member_card.dart';
 
-/// Lista de dispositivos vinculados a quien cuida. Solo con cuenta real.
-class DevicesScreen extends StatefulWidget {
-  const DevicesScreen({super.key, this.careService, this.isSelected = true});
+/// Familiares acompañados vinculados a quien cuida. Solo con cuenta real.
+class FamilyScreen extends StatefulWidget {
+  const FamilyScreen({super.key, this.careService, this.isSelected = true});
 
   final CareService? careService;
   final bool isSelected;
 
   @override
-  State<DevicesScreen> createState() => _DevicesScreenState();
+  State<FamilyScreen> createState() => _FamilyScreenState();
 }
 
-class _DevicesScreenState extends State<DevicesScreen> {
+class _FamilyScreenState extends State<FamilyScreen> {
   late final CareService _care;
 
   var _loading = true;
-  List<LinkedDevice> _devices = const [];
+  List<LinkedDevice> _members = const [];
   String? _error;
 
   @override
@@ -34,7 +34,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   @override
-  void didUpdateWidget(covariant DevicesScreen oldWidget) {
+  void didUpdateWidget(covariant FamilyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelected && !oldWidget.isSelected) {
       unawaited(_load());
@@ -42,25 +42,25 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Future<void> _load() async {
-    final showSpinner = _devices.isEmpty && _error == null;
+    final showSpinner = _members.isEmpty && _error == null;
     if (showSpinner) {
       setState(() => _loading = true);
     }
 
     try {
-      final devices = await _care.listLinkedDevices();
+      final members = await _care.listFamilyMembers();
       if (!mounted) {
         return;
       }
       setState(() {
-        _devices = devices;
+        _members = members;
         _error = null;
         _loading = false;
       });
     } on CareFailure catch (error) {
       _fail(error.message);
     } catch (_) {
-      _fail('No pudimos cargar tus dispositivos. Intentémoslo de nuevo.');
+      _fail('No pudimos cargar tu familia. Intentémoslo de nuevo.');
     }
   }
 
@@ -71,12 +71,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
     setState(() {
       _loading = false;
-      if (_devices.isEmpty) {
+      if (_members.isEmpty) {
         _error = message;
       }
     });
 
-    if (_devices.isEmpty) {
+    if (_members.isEmpty) {
       return;
     }
 
@@ -85,7 +85,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openAddDevice() async {
+  Future<void> _openAddMember() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AddDeviceScreen(careService: _care),
@@ -107,12 +107,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Dispositivos',
+                'Familia',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
               Text(
-                'Las personas que acompañas desde Noty.',
+                'Los familiares a tu cargo y el teléfono con el que los acompañas.',
                 style: Theme.of(context).textTheme.titleMedium
                     ?.copyWith(color: AppColors.grisMedio),
               ),
@@ -139,12 +139,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
       );
     }
 
-    if (_devices.isEmpty) {
+    if (_members.isEmpty) {
       return _message(
         context,
-        text: 'Todavía no hay dispositivos vinculados. Cuando alguien muestre su código, puedes añadirlo aquí.',
-        actionLabel: 'Añadir un dispositivo',
-        onAction: _openAddDevice,
+        text:
+            'Todavía no hay familiares vinculados. Cuando alguien de tu familia muestre su código, puedes añadirlo aquí.',
+        actionLabel: 'Añadir miembro familiar',
+        onAction: _openAddMember,
       );
     }
 
@@ -153,22 +154,22 @@ class _DevicesScreenState extends State<DevicesScreen> {
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
-        itemCount: _devices.length + 1,
+        itemCount: _members.length + 1,
         separatorBuilder: (context, index) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
-          if (index == _devices.length) {
+          if (index == _members.length) {
             return OutlinedButton(
-              onPressed: _openAddDevice,
-              child: const Text('Añadir un dispositivo'),
+              onPressed: _openAddMember,
+              child: const Text('Añadir miembro familiar'),
             );
           }
 
-          final device = _devices[index];
-          return LinkedDeviceCard(
-            key: ValueKey(device.id),
-            customName: device.displayName,
-            brandModel: device.brandModel,
-            lastSeenLabel: device.lastSeenLabel,
+          final member = _members[index];
+          return FamilyMemberCard(
+            key: ValueKey(member.id),
+            name: member.displayName,
+            phoneDescription: member.phoneDescription,
+            lastSeenLabel: member.lastSeenLabel,
           );
         },
       ),
