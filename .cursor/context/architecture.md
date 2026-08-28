@@ -46,8 +46,8 @@ Cada módulo que persiste o sincroniza tiene **su** fachada de producto:
 
 | Feature | Fachada | Responsabilidad |
 |---|---|---|
-| `notifications` | `Notificator` | Crear, listar, confirmar, sincronizar recordatorios; programar alarmas |
-| `care` | p. ej. `CareService` | Vínculo familiar, dispositivos. Tablas en Postgres; fachada/UI aún no |
+| `notifications` | `Notificator` | Crear, listar, confirmar, sincronizar recordatorios; programar alarmas. UI de alta visual lista; guardado aún no. Ver `notifications.md`. |
+| `care` | `CareService` | Vínculo familiar, dispositivos. UI en tab Familia + pantallas de QR. |
 | `auth` | `AuthService` | Sesión. UI actual: correo y anónimo. Google/Microsoft están en la fachada, no en la pantalla. |
 | `reports` (futuro) | p. ej. `ReportsService` | Historial y cumplimiento |
 
@@ -112,7 +112,7 @@ lib/
     screens/                ← LoginScreen, SignUpScreen
     widgets/                ← AuthGate
   home/
-    screens/                ← HomeScreen, MainShell (footer con sesión)
+    screens/                ← HomeScreen, MainShell (footer: Inicio, Notificaciones, Familia, Perfil)
     widgets/
   profile/
     screens/                ← ProfileScreen
@@ -121,9 +121,13 @@ lib/
     data/
       local/
       remote/
-    services/               ← Notificator (fachada de esta feature)
-    screens/
+    services/               ← Notificator (fachada; aún vacía — el alta es solo visual)
+    screens/                ← NotificationsScreen, AddNotificationScreen
     widgets/
+  care/
+    models/, data/, services/, screens/
+  family/
+    screens/                ← FamilyScreen (tab; usa CareService)
 ```
 
 `care/` y `reports/` nacerán como features hermanas, cada una con su fachada, todas usando el mismo `BackendClient`. El esquema de identidad y familia ya está en `supabase/migrations/`.
@@ -184,17 +188,18 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 ## 10. Modelo de datos (Postgres / Supabase)
 
-SQL canónico: `supabase/migrations/20260827010000_care_identity.sql`.
+SQL canónico: `supabase/migrations/` (`care_identity`, `reminders`).
 
-La app Flutter **aún no** expone pantallas de auth ni de vínculo. Este esquema es la verdad en la nube para cuando existan `AuthService` y `CareService`.
+Auth, vínculo familiar y el alta visual de recordatorios ya están en la app. Las tablas de recordatorios y respuestas existen; aún no hay RLS/RPCs ni guardado desde la app.
 
 ### Idea
 
-Hay tres entidades, no una tabla “users” con el id del celular:
+Hay cuatro entidades, no una tabla “users” con el id del celular:
 
 1. **Persona** (`profiles`) — quien es. Correo, Google, Microsoft o anónimo comparten el mismo `id` (`auth.users.id`).
 2. **Dispositivo** (`devices`) — un install de la app. Identidad = `install_id` (UUID que genera Noty y guarda en secure storage). Eso va en el QR.
 3. **Grupo familiar** (`families` + `family_members`) — quién cuida a quién.
+4. **Recordatorio** (`reminders` + `reminder_devices` + `reminder_responses`) — qué recordar, en qué teléfonos suena, y si confirmaron o ignoraron.
 
 “Continuar sin login” (p. ej. un abuelo sin correo) **no** es un hueco sin fila: es **Auth anónimo** de Supabase. Hay `auth.uid()`, se crea `profiles`, se registra el `device`, y RLS funciona. Al reabrir la app, la sesión anónima + el `install_id` local permiten cargar los padres asociados.
 
@@ -245,6 +250,40 @@ Un mismo profile puede ser `host` en la familia A y `accompanied` en la B. Un de
 
 Al reabrir el teléfono del abuelo: membresías `accompanied` de ese `device` → miembros `host` / `caregiver` de esas familias = padres asociados.
 
+**`reminders`**
+
+| Columna | Notas |
+|---|---|
+| `name`, `description` | Título obligatorio; descripción opcional |
+| `time_local` | Hora de pared (`time`), sin fecha. Implícito: todos los días |
+| `timezone` | IANA. Default `America/Bogota`. No es el país |
+| `created_by` | Profile que lo creó. No es `families.host_id` |
+| `deleted_at` | Soft delete. `null` = vigente. No hay `is_deleted` |
+
+Migración: `supabase/migrations/20260827020000_reminders.sql`. RLS activado **sin políticas** todavía (la API no lee ni escribe).
+
+**`reminder_devices`**
+
+| Columna | Notas |
+|---|---|
+| `reminder_id` | FK a `reminders`. Cascade al borrar el recordatorio |
+| `device_id` | FK a `devices.id` (PK interno). **No** `install_id` |
+| unique | `(reminder_id, device_id)` |
+
+El teléfono acompañado se reconoce por `install_id` local → fila `devices` → filas en `reminder_devices`.
+
+**`reminder_responses`**
+
+| Columna | Notas |
+|---|---|
+| `reminder_id`, `device_id` | Qué recordatorio y en qué teléfono |
+| `response` | Solo `confirmed` o `ignored` (descartó o dijo que no) |
+| `due_at` | Cuándo debía sonar esa ocurrencia |
+| `responded_at` | Cuándo pulsó confirmar o ignorar |
+| unique | `(reminder_id, device_id, due_at)` — una respuesta por disparo |
+
+Sin fila = todavía no hay respuesta (el teléfono no contestó). Las alertas futuras salen de `ignored` o de esa ausencia. No hay estado `missed` ni `error` en esta tabla.
+
 ### Cómo mutar (no desde la UI todavía)
 
 | Acción | Cómo |
@@ -278,4 +317,4 @@ Quien llama es `authenticated` (sesión real o anónima). Sin sesión, nada.
 
 Invitar a un segundo cuidador **al mismo** grupo (recordatorios compartidos) es un paso posterior (`invites`). Hoy, dos padres = dos familias que comparten el device.
 
-Recordatorios y confirmaciones **no** están en este esquema todavía.
+Alertas a familiares cuando no confirman **no** están implementadas; la tabla `reminder_responses` es el dato que las alimentará.

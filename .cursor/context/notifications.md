@@ -1,0 +1,50 @@
+# Módulo notifications — estado actual
+
+Fuente de arquitectura: `architecture.md`. Este archivo describe **qué ya está en la UI** y qué falta. No reimplementar el flujo visual.
+
+## Qué hay
+
+El tab **Notificaciones** está en el footer de `MainShell`, entre Inicio y Familia.
+
+| Pieza | Dónde |
+|---|---|
+| Lista | `lib/notifications/screens/notifications_screen.dart` |
+| Alta en 2 pasos | `lib/notifications/screens/add_notification_screen.dart` |
+| Tile de device con check | `lib/notifications/widgets/notification_device_tile.dart` |
+| Fachada (vacía) | `lib/notifications/services/notificator.dart` |
+
+El `+` abre `AddNotificationScreen` (ruta aparte, no un tab). La lista está **vacía a propósito**: aún no se guarda nada.
+
+## Flujo visual (no tocarlo salvo pedido)
+
+### Paso 1 — ¿Qué hay que recordar?
+
+- **Nombre** (obligatorio). Ej. Tomar Losartan.
+- **Descripción** (opcional). Ej. Tomar Losartan 500 mg.
+- **Hora**, con el `TimePicker` del sistema.
+- **Zona horaria**, default `America/Bogota` (Colombia).
+- **Continuar** solo si hay nombre y hora.
+- **Volver** cierra y regresa a la lista.
+
+### Paso 2 — ¿En qué teléfonos sonará?
+
+- Lista los dispositivos familiares ya vinculados (`CareService.listFamilyMembers`).
+- Cada uno tiene check (`NotificationDeviceTile`).
+- **Guardar notificación** se habilita con al menos un device marcado. El handler `_save` está vacío a propósito.
+- **Volver** y el atrás del sistema vuelven al paso 1 **sin perder** nombre, descripción, hora, zona ni selección.
+
+Lógica de UI permitida hoy: campos obligatorios, habilitar botones, avanzar/volver entre pasos, cargar devices para pintar checks. Nada más.
+
+## Datos (nube)
+
+Tablas: `reminders` + `reminder_devices` + `reminder_responses` (`supabase/migrations/20260827020000_reminders.sql`). RLS sin políticas. La app **aún no** escribe.
+
+## Qué no hacer todavía
+
+- No persistir desde la app (local, nube ni alarmas).
+- No llenar `Notificator` ni añadir RLS/RPCs salvo pedido explícito.
+- No añadir periodicidad, UI de confirmar/ignorar, alarmas ni listado real hasta que se pida.
+
+## Siguiente paso (cuando se pida)
+
+RLS/RPC de recordatorios y enganchar **Guardar notificación** a `Notificator`. Las pantallas deben hablar con esa fachada, no con `BackendClient`.

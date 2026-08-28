@@ -1,0 +1,109 @@
+-- Reminders: qué recordar, en qué devices suena, y cómo respondieron.
+-- Solo tablas. RLS, RPCs y la app se enganchan después.
+-- Apply in the Supabase SQL editor if the CLI is not linked to the project.
+
+-- ---------------------------------------------------------------------------
+-- reminders
+-- ---------------------------------------------------------------------------
+
+create table public.reminders (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  time_local time not null,
+  timezone text not null default 'America/Bogota',
+  created_by uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  constraint reminders_name_not_blank check (length(trim(name)) > 0),
+  constraint reminders_timezone_not_blank check (length(trim(timezone)) > 0)
+);
+
+comment on table public.reminders is
+  'Recordatorio. La alarma se interpreta como time_local todos los días en timezone (IANA). Soft delete: deleted_at.';
+comment on column public.reminders.name is
+  'Título visible. Ej. Tomar Losartan.';
+comment on column public.reminders.description is
+  'Detalle opcional. Ej. Tomar Losartan 500 mg.';
+comment on column public.reminders.time_local is
+  'Hora de pared, sin fecha. Ej. 08:00:00.';
+comment on column public.reminders.timezone is
+  'Zona IANA. Default America/Bogota. No es el nombre del país.';
+comment on column public.reminders.created_by is
+  'Profile que creó el recordatorio (hoy el host). No confundir con families.host_id.';
+comment on column public.reminders.deleted_at is
+  'Null = vigente. Soft delete; no hay columna is_deleted.';
+
+create index reminders_created_by_idx on public.reminders (created_by);
+create index reminders_active_idx
+  on public.reminders (created_by)
+  where deleted_at is null;
+
+create trigger reminders_set_updated_at
+  before update on public.reminders
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- reminder_devices
+-- ---------------------------------------------------------------------------
+
+create table public.reminder_devices (
+  id uuid primary key default gen_random_uuid(),
+  reminder_id uuid not null references public.reminders (id) on delete cascade,
+  device_id uuid not null references public.devices (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  constraint reminder_devices_once unique (reminder_id, device_id)
+);
+
+comment on table public.reminder_devices is
+  'En qué teléfonos suena un recordatorio. device_id = devices.id, no install_id.';
+comment on column public.reminder_devices.device_id is
+  'PK interno de devices. El teléfono se reconoce en runtime por devices.install_id.';
+
+create index reminder_devices_reminder_id_idx
+  on public.reminder_devices (reminder_id);
+create index reminder_devices_device_id_idx
+  on public.reminder_devices (device_id);
+
+-- ---------------------------------------------------------------------------
+-- reminder_responses
+-- ---------------------------------------------------------------------------
+
+create table public.reminder_responses (
+  id uuid primary key default gen_random_uuid(),
+  reminder_id uuid not null references public.reminders (id) on delete cascade,
+  device_id uuid not null references public.devices (id) on delete cascade,
+  response text not null check (response in ('confirmed', 'ignored')),
+  due_at timestamptz not null,
+  responded_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint reminder_responses_once unique (reminder_id, device_id, due_at)
+);
+
+comment on table public.reminder_responses is
+  'Respuesta del usuario a una ocurrencia: confirmed o ignored. Sin fila = todavía no hay respuesta. No hay missed ni error.';
+comment on column public.reminder_responses.device_id is
+  'Teléfono que respondió (devices.id). No install_id.';
+comment on column public.reminder_responses.response is
+  'confirmed: hizo la tarea. ignored: la descartó o indicó que no.';
+comment on column public.reminder_responses.due_at is
+  'Instante en que debía sonar esa ocurrencia (time_local + timezone de ese día).';
+comment on column public.reminder_responses.responded_at is
+  'Cuándo pulsó confirmar o ignorar.';
+
+create index reminder_responses_reminder_id_idx
+  on public.reminder_responses (reminder_id);
+create index reminder_responses_device_id_idx
+  on public.reminder_responses (device_id);
+create index reminder_responses_due_at_idx
+  on public.reminder_responses (reminder_id, due_at);
+
+create trigger reminder_responses_set_updated_at
+  before update on public.reminder_responses
+  for each row execute function public.set_updated_at();
+
+alter table public.reminders enable row level security;
+alter table public.reminder_devices enable row level security;
+alter table public.reminder_responses enable row level security;

@@ -40,7 +40,11 @@ lib/auth/{models,services,screens,widgets}   ← AuthService, AuthGate
 lib/home/                                    ← HomeScreen, MainShell
 lib/profile/{screens}                        ← ProfileScreen (cuenta; usa AuthService)
 lib/notifications/{models,data/local,data/remote,services,screens,widgets}
+lib/care/                                    ← CareService (vínculo, devices)
+lib/family/                                  ← FamilyScreen (tab Familia)
 ```
+
+Footer (`MainShell`): Inicio → Notificaciones → Familia (solo cuenta real) → Perfil. Estado de la UI de recordatorios: `.cursor/context/notifications.md`.
 
 Home solo si hay sesión (anónima o cuenta). La sesión se restaura al reabrir la app.
 
@@ -53,6 +57,7 @@ Fuente completa: `.cursor/context/architecture.md` §10. Migración: `supabase/m
 - `profiles` — persona; `id` = `auth.users.id`. No crear `public.users`.
 - `devices` — un install; identidad = `install_id` (UUID de la app, no el del SO). El QR lleva eso.
 - `families` + `family_members` — grupo; roles `host` / `caregiver` / `accompanied`.
+- `reminders` + `reminder_devices` + `reminder_responses` — recordatorio, en qué `devices.id` suena, confirmó/ignoró. Tablas listas; RLS/app aún no.
 - Continuar sin login = **Auth anónimo** de Supabase (sesión + RLS). El abuelo no es una fila huérfana.
 - Un profile puede ser padre en una familia y acompañado en otra. Un device puede estar en varias familias.
 - Crear familia / vincular por QR: RPCs `create_family` y `link_device_to_family`, no inserts directos a `family_members`.

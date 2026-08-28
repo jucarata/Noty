@@ -1,0 +1,27 @@
+---
+description: Estado del módulo notifications — UI de alta visual hecha; no rehacerla; siguiente paso es Notificator
+globs: lib/notifications/**/*.dart
+alwaysApply: false
+---
+
+# Noty — notifications
+
+Fuente: `.cursor/context/notifications.md`.
+
+## Ya está (no rehacer)
+
+- Tab **Notificaciones** en el footer, entre Inicio y Familia.
+- Lista vacía a propósito + botón `+` → `AddNotificationScreen`.
+- Paso 1: nombre (obligatorio), descripción (opcional), hora (TimePicker), zona `America/Bogota` por defecto. Continuar solo con nombre y hora.
+- Paso 2: devices familiares con check. Guardar se habilita con ≥1 device; **aún no guarda**.
+- Volver / atrás del sistema: paso 2 → paso 1 sin perder el formulario.
+
+## Datos
+
+Tablas `reminders` + `reminder_devices` + `reminder_responses` ya existen. RLS y guardado desde la app, no.
+
+## Siguiente (solo si se pide)
+
+RLS/RPC y enganchar **Guardar notificación** a `Notificator`. No alarmas ni periodicidad hasta entonces.
+
+Pantallas → `Notificator` → local + `BackendClient`. No importar red/DB desde la UI.
