@@ -255,8 +255,12 @@ Al reabrir el teléfono del abuelo: membresías `accompanied` de ese `device` �
 | Columna | Notas |
 |---|---|
 | `name`, `description` | Título obligatorio; descripción opcional |
-| `time_local` | Hora de pared (`time`), sin fecha. Implícito: todos los días |
+| `time_local` | Hora de pared (`time`), sin fecha |
 | `timezone` | IANA. Default `America/Bogota`. No es el país |
+| `every_day` | Default `true`. Si está activo, ignora lun–dom |
+| `monday` … `sunday` | Días concretos. Al menos uno si `every_day` es false |
+| `run_days` | Hasta cuántos **días de alarma**. Cada día marcado cuenta 1; suena una vez ese día a `time_local`. Solo lunes y `7` = el 7º lunes es el último. Lun+mar y `10` = termina el martes de la 5ª semana. Al cumplirse, `is_active` = false (no aplica si `every_day`) |
+| `is_active` | Default `true`. Si no es todos los días, al acabar `run_days` pasa a false y hay que reactivar. Si `every_day`, sigue activa hasta desactivarla a mano |
 | `created_by` | Profile que lo creó. No es `families.host_id` |
 | `deleted_at` | Soft delete. `null` = vigente. No hay `is_deleted` |
 

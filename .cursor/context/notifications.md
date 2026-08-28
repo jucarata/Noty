@@ -39,11 +39,24 @@ Lógica de UI permitida hoy: campos obligatorios, habilitar botones, avanzar/vol
 
 Tablas: `reminders` + `reminder_devices` + `reminder_responses` (`supabase/migrations/20260827020000_reminders.sql`). RLS sin políticas. La app **aún no** escribe.
 
+### `reminders` — periodicidad y estado
+
+| Campo | Comportamiento |
+|---|---|
+| `every_day` | Default `true`. Si está activo, **manda**: lun–dom no cuentan. |
+| `monday` … `sunday` | Días concretos. Al menos uno si `every_day` es false. |
+| `run_days` | Hasta cuántos **días de alarma** (cada día marcado cuenta 1; una vez por día a `time_local`). Solo lunes y `7` = el 7.º lunes es el último. Lun+mar y `10` = termina el martes de la 5.ª semana. |
+| `is_active` | Default `true`. Con días concretos, al cumplirse `run_days` pasa a `false` y hay que reactivar. Si `every_day`, sigue activa hasta desactivarla a mano. Distinto de `deleted_at` (pausar/vencer vs borrar). |
+
+El apagado automático al terminar `run_days` es lógica de app/job, no un trigger SQL. El teléfono hijo solo programa alarmas si `is_active` y `deleted_at` es null.
+
+El alta visual **aún no** pide periodicidad ni `is_active`.
+
 ## Qué no hacer todavía
 
 - No persistir desde la app (local, nube ni alarmas).
 - No llenar `Notificator` ni añadir RLS/RPCs salvo pedido explícito.
-- No añadir periodicidad, UI de confirmar/ignorar, alarmas ni listado real hasta que se pida.
+- No añadir al alta visual los días / `run_days`, ni UI de confirmar/ignorar, alarmas ni listado real hasta que se pida.
 
 ## Siguiente paso (cuando se pida)
 

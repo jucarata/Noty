@@ -12,16 +12,37 @@ create table public.reminders (
   description text,
   time_local time not null,
   timezone text not null default 'America/Bogota',
+  every_day boolean not null default true,
+  monday boolean not null default false,
+  tuesday boolean not null default false,
+  wednesday boolean not null default false,
+  thursday boolean not null default false,
+  friday boolean not null default false,
+  saturday boolean not null default false,
+  sunday boolean not null default false,
+  run_days integer not null,
+  is_active boolean not null default true,
   created_by uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   constraint reminders_name_not_blank check (length(trim(name)) > 0),
-  constraint reminders_timezone_not_blank check (length(trim(timezone)) > 0)
+  constraint reminders_timezone_not_blank check (length(trim(timezone)) > 0),
+  constraint reminders_run_days_positive check (run_days > 0),
+  constraint reminders_has_schedule check (
+    every_day
+    or monday
+    or tuesday
+    or wednesday
+    or thursday
+    or friday
+    or saturday
+    or sunday
+  )
 );
 
 comment on table public.reminders is
-  'Recordatorio. La alarma se interpreta como time_local todos los días en timezone (IANA). Soft delete: deleted_at.';
+  'Recordatorio. Suena a time_local en timezone (IANA). every_day manda sobre los días de la semana. is_active = si debe sonar. Soft delete: deleted_at.';
 comment on column public.reminders.name is
   'Título visible. Ej. Tomar Losartan.';
 comment on column public.reminders.description is
@@ -30,6 +51,26 @@ comment on column public.reminders.time_local is
   'Hora de pared, sin fecha. Ej. 08:00:00.';
 comment on column public.reminders.timezone is
   'Zona IANA. Default America/Bogota. No es el nombre del país.';
+comment on column public.reminders.every_day is
+  'Si true, suena todos los días a time_local. Los flags lun–dom no cuentan.';
+comment on column public.reminders.monday is
+  'Suena el lunes. Ignorado si every_day.';
+comment on column public.reminders.tuesday is
+  'Suena el martes. Ignorado si every_day.';
+comment on column public.reminders.wednesday is
+  'Suena el miércoles. Ignorado si every_day.';
+comment on column public.reminders.thursday is
+  'Suena el jueves. Ignorado si every_day.';
+comment on column public.reminders.friday is
+  'Suena el viernes. Ignorado si every_day.';
+comment on column public.reminders.saturday is
+  'Suena el sábado. Ignorado si every_day.';
+comment on column public.reminders.sunday is
+  'Suena el domingo. Ignorado si every_day.';
+comment on column public.reminders.run_days is
+  'Hasta cuántos días de alarma (cada día marcado cuenta 1; una vez por día a time_local). Solo lunes y 7 = el 7º lunes es el último. Lun+mar y 10 = 10 días de alarma, termina el martes de la 5ª semana. Al cumplirse, is_active pasa a false (no aplica si every_day).';
+comment on column public.reminders.is_active is
+  'Si debe sonar. Default true. Con días concretos, al terminar run_days pasa a false y hay que reactivar. Si every_day, sigue true hasta que alguien la desactive.';
 comment on column public.reminders.created_by is
   'Profile que creó el recordatorio (hoy el host). No confundir con families.host_id.';
 comment on column public.reminders.deleted_at is
