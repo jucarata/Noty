@@ -20,7 +20,7 @@ Fuente: `.cursor/context/notifications.md`.
 
 Tablas `reminders` + `reminder_devices` + `reminder_responses` ya existen. RLS y guardado desde la app, no.
 
-Periodicidad en `reminders`: `every_day` manda sobre lun–dom. `run_days` = cuántos días de alarma (el N-ésimo día marcado). `is_active` default true; al acabar `run_days` (si no es todos los días) pasa a false. Si `every_day`, solo se apaga a mano. Distinto de `deleted_at`.
+Periodicidad en `reminders`: `start_date` (día en que empieza; distinto de `time_local`). `single_use` (una vez ese día) excluye `every_day`, lun–dom y `run_days`. Si no, `every_day` manda sobre lun–dom. `run_days` = cuántos días de alarma desde `start_date`. `is_active` default true; al acabar `run_days` o la única vez pasa a false. Si `every_day`, solo se apaga a mano. Distinto de `deleted_at`.
 
 ## Siguiente (solo si se pide)
 

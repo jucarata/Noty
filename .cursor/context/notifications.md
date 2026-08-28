@@ -43,12 +43,14 @@ Tablas: `reminders` + `reminder_devices` + `reminder_responses` (`supabase/migra
 
 | Campo | Comportamiento |
 |---|---|
-| `every_day` | Default `true`. Si está activo, **manda**: lun–dom no cuentan. |
-| `monday` … `sunday` | Días concretos. Al menos uno si `every_day` es false. |
-| `run_days` | Hasta cuántos **días de alarma** (cada día marcado cuenta 1; una vez por día a `time_local`). Solo lunes y `7` = el 7.º lunes es el último. Lun+mar y `10` = termina el martes de la 5.ª semana. |
-| `is_active` | Default `true`. Con días concretos, al cumplirse `run_days` pasa a `false` y hay que reactivar. Si `every_day`, sigue activa hasta desactivarla a mano. Distinto de `deleted_at` (pausar/vencer vs borrar). |
+| `start_date` | Día civil en que **empieza** a sonar. No es la hora (`time_local`) ni `created_at`. Casi siempre el día de creación; más adelante puede ser otro. Desde aquí se cuentan `run_days` y el disparo de `single_use`. |
+| `single_use` | Default `false`. Suena **una sola vez** a `time_local` en `start_date`. No puede ir con `every_day`, lun–dom ni `run_days` (check SQL). Tras sonar, `is_active` = false. |
+| `every_day` | Default `true`. Si está activo, **manda**: lun–dom no cuentan. Incompatible con `single_use`. |
+| `monday` … `sunday` | Días concretos. Al menos uno si no es `single_use` ni `every_day`. |
+| `run_days` | Hasta cuántos **días de alarma** desde `start_date` (cada día marcado cuenta 1; una vez por día a `time_local`). Solo lunes y `7` = el 7.º lunes es el último. Lun+mar y `10` = termina el martes de la 5.ª semana. `null` si `single_use`. |
+| `is_active` | Default `true`. Con días concretos, al cumplirse `run_days` pasa a `false`. Con `single_use`, tras la única vez pasa a `false`. Si `every_day`, sigue activa hasta desactivarla a mano. Distinto de `deleted_at`. |
 
-El apagado automático al terminar `run_days` es lógica de app/job, no un trigger SQL. El teléfono hijo solo programa alarmas si `is_active` y `deleted_at` es null.
+Prioridad: `single_use` → `every_day` → días + `run_days`. El apagado automático es lógica de app/job, no un trigger SQL. El teléfono hijo solo programa alarmas si `is_active` y `deleted_at` es null.
 
 El alta visual **aún no** pide periodicidad ni `is_active`.
 

@@ -12,6 +12,7 @@ create table public.reminders (
   description text,
   time_local time not null,
   timezone text not null default 'America/Bogota',
+  start_date date not null,
   every_day boolean not null default true,
   monday boolean not null default false,
   tuesday boolean not null default false,
@@ -20,7 +21,8 @@ create table public.reminders (
   friday boolean not null default false,
   saturday boolean not null default false,
   sunday boolean not null default false,
-  run_days integer not null,
+  run_days integer,
+  single_use boolean not null default false,
   is_active boolean not null default true,
   created_by uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz not null default now(),
@@ -28,9 +30,10 @@ create table public.reminders (
   deleted_at timestamptz,
   constraint reminders_name_not_blank check (length(trim(name)) > 0),
   constraint reminders_timezone_not_blank check (length(trim(timezone)) > 0),
-  constraint reminders_run_days_positive check (run_days > 0),
+  constraint reminders_run_days_positive check (run_days is null or run_days > 0),
   constraint reminders_has_schedule check (
-    every_day
+    single_use
+    or every_day
     or monday
     or tuesday
     or wednesday
@@ -38,11 +41,29 @@ create table public.reminders (
     or friday
     or saturday
     or sunday
+  ),
+  constraint reminders_single_use_exclusive check (
+    not single_use
+    or (
+      every_day = false
+      and monday = false
+      and tuesday = false
+      and wednesday = false
+      and thursday = false
+      and friday = false
+      and saturday = false
+      and sunday = false
+      and run_days is null
+    )
+  ),
+  constraint reminders_repeat_needs_run_days check (
+    single_use
+    or run_days is not null
   )
 );
 
 comment on table public.reminders is
-  'Recordatorio. Suena a time_local en timezone (IANA). every_day manda sobre los días de la semana. is_active = si debe sonar. Soft delete: deleted_at.';
+  'Recordatorio. Suena a time_local en timezone (IANA) desde start_date. single_use excluye every_day, lun–dom y run_days. every_day manda sobre los días. is_active = si debe sonar. Soft delete: deleted_at.';
 comment on column public.reminders.name is
   'Título visible. Ej. Tomar Losartan.';
 comment on column public.reminders.description is
@@ -51,26 +72,30 @@ comment on column public.reminders.time_local is
   'Hora de pared, sin fecha. Ej. 08:00:00.';
 comment on column public.reminders.timezone is
   'Zona IANA. Default America/Bogota. No es el nombre del país.';
+comment on column public.reminders.start_date is
+  'Día civil en que empieza a sonar (no es la hora). Casi siempre el día de creación; puede ser otro. El conteo de run_days y el disparo de single_use arrancan aquí.';
 comment on column public.reminders.every_day is
-  'Si true, suena todos los días a time_local. Los flags lun–dom no cuentan.';
+  'Si true, suena todos los días a time_local. Los flags lun–dom no cuentan. Incompatible con single_use.';
 comment on column public.reminders.monday is
-  'Suena el lunes. Ignorado si every_day.';
+  'Suena el lunes. Ignorado si every_day o single_use.';
 comment on column public.reminders.tuesday is
-  'Suena el martes. Ignorado si every_day.';
+  'Suena el martes. Ignorado si every_day o single_use.';
 comment on column public.reminders.wednesday is
-  'Suena el miércoles. Ignorado si every_day.';
+  'Suena el miércoles. Ignorado si every_day o single_use.';
 comment on column public.reminders.thursday is
-  'Suena el jueves. Ignorado si every_day.';
+  'Suena el jueves. Ignorado si every_day o single_use.';
 comment on column public.reminders.friday is
-  'Suena el viernes. Ignorado si every_day.';
+  'Suena el viernes. Ignorado si every_day o single_use.';
 comment on column public.reminders.saturday is
-  'Suena el sábado. Ignorado si every_day.';
+  'Suena el sábado. Ignorado si every_day o single_use.';
 comment on column public.reminders.sunday is
-  'Suena el domingo. Ignorado si every_day.';
+  'Suena el domingo. Ignorado si every_day o single_use.';
 comment on column public.reminders.run_days is
-  'Hasta cuántos días de alarma (cada día marcado cuenta 1; una vez por día a time_local). Solo lunes y 7 = el 7º lunes es el último. Lun+mar y 10 = 10 días de alarma, termina el martes de la 5ª semana. Al cumplirse, is_active pasa a false (no aplica si every_day).';
+  'Hasta cuántos días de alarma desde start_date (cada día marcado cuenta 1; una vez por día a time_local). Solo lunes y 7 = el 7º lunes es el último. Lun+mar y 10 = 10 días de alarma, termina el martes de la 5ª semana. Al cumplirse, is_active pasa a false (no aplica si every_day). Null si single_use.';
+comment on column public.reminders.single_use is
+  'Si true, suena una sola vez a time_local en start_date (o el siguiente hueco si la hora ya pasó). Excluye every_day, lun–dom y run_days. Tras sonar, is_active pasa a false.';
 comment on column public.reminders.is_active is
-  'Si debe sonar. Default true. Con días concretos, al terminar run_days pasa a false y hay que reactivar. Si every_day, sigue true hasta que alguien la desactive.';
+  'Si debe sonar. Default true. Con días concretos, al terminar run_days pasa a false y hay que reactivar. Si single_use, tras la única vez pasa a false. Si every_day, sigue true hasta que alguien la desactive.';
 comment on column public.reminders.created_by is
   'Profile que creó el recordatorio (hoy el host). No confundir con families.host_id.';
 comment on column public.reminders.deleted_at is
