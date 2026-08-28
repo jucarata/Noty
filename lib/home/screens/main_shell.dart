@@ -4,9 +4,10 @@ import 'package:noty/auth/services/auth_service.dart';
 import 'package:noty/family/screens/family_screen.dart';
 import 'package:noty/home/screens/home_screen.dart';
 import 'package:noty/home/widgets/app_bottom_nav.dart';
+import 'package:noty/notifications/screens/notifications_screen.dart';
 import 'package:noty/profile/screens/profile_screen.dart';
 
-/// Marco con sesión: footer de la app. Cambia entre inicio, familia y perfil.
+/// Marco con sesión: footer de la app. Cambia entre inicio, notificaciones, familia y perfil.
 class MainShell extends StatefulWidget {
   const MainShell({super.key, this.authService});
 
@@ -44,11 +45,13 @@ class _MainShellState extends State<MainShell> {
           body: IndexedStack(
             index: switch (selected) {
               AppDestination.home => 0,
-              AppDestination.family => 1,
-              AppDestination.profile => 2,
+              AppDestination.notifications => 1,
+              AppDestination.family => 2,
+              AppDestination.profile => 3,
             },
             children: [
               HomeScreen(authService: _auth),
+              const NotificationsScreen(),
               if (showFamily)
                 FamilyScreen(isSelected: selected == AppDestination.family)
               else
