@@ -1,5 +1,5 @@
 -- Reminders: qué recordar, en qué devices suena, y cómo respondieron.
--- Solo tablas. RLS, RPCs y la app se enganchan después.
+-- Tablas, RLS de lectura y RPC create_reminder.
 -- Apply in the Supabase SQL editor if the CLI is not linked to the project.
 
 -- ---------------------------------------------------------------------------
@@ -55,10 +55,6 @@ create table public.reminders (
       and sunday = false
       and run_days is null
     )
-  ),
-  constraint reminders_repeat_needs_run_days check (
-    single_use
-    or run_days is not null
   )
 );
 
@@ -91,7 +87,7 @@ comment on column public.reminders.saturday is
 comment on column public.reminders.sunday is
   'Suena el domingo. Ignorado si every_day o single_use.';
 comment on column public.reminders.run_days is
-  'Hasta cuántos días de alarma desde start_date (cada día marcado cuenta 1; una vez por día a time_local). Solo lunes y 7 = el 7º lunes es el último. Lun+mar y 10 = 10 días de alarma, termina el martes de la 5ª semana. Al cumplirse, is_active pasa a false (no aplica si every_day). Null si single_use.';
+  'Hasta cuántos días de alarma desde start_date (cada día marcado cuenta 1; una vez por día a time_local). Solo lunes y 7 = el 7º lunes es el último. Lun+mar y 10 = 10 días de alarma, termina el martes de la 5ª semana. Al cumplirse, is_active pasa a false (no aplica si every_day, salvo que run_days esté definido). Null si single_use o si no termina.';
 comment on column public.reminders.single_use is
   'Si true, suena una sola vez a time_local en start_date (o el siguiente hueco si la hora ya pasó). Excluye every_day, lun–dom y run_days. Tras sonar, is_active pasa a false.';
 comment on column public.reminders.is_active is
@@ -170,6 +166,274 @@ create trigger reminder_responses_set_updated_at
   before update on public.reminder_responses
   for each row execute function public.set_updated_at();
 
+-- ---------------------------------------------------------------------------
+-- El host/cuidador solo asigna teléfonos acompañados de sus familias.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.is_carer_of_accompanied_device(p_device_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.family_members accompanied
+    join public.family_members carer
+      on carer.family_id = accompanied.family_id
+    where accompanied.device_id = p_device_id
+      and accompanied.role = 'accompanied'
+      and carer.profile_id = auth.uid()
+      and carer.role in ('host', 'caregiver')
+  );
+$$;
+
+create or replace function public.can_read_reminder(p_reminder_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.reminders r
+    where r.id = p_reminder_id
+      and r.deleted_at is null
+      and (
+        r.created_by = auth.uid()
+        or exists (
+          select 1
+          from public.reminder_devices rd
+          join public.devices d on d.id = rd.device_id
+          where rd.reminder_id = r.id
+            and d.owner_id = auth.uid()
+        )
+        or exists (
+          select 1
+          from public.reminder_devices rd
+          join public.family_members fm on fm.device_id = rd.device_id
+          where rd.reminder_id = r.id
+            and public.is_family_member(fm.family_id)
+        )
+      )
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
+-- RPC: crea reminders + reminder_devices en una sola transacción.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.create_reminder(
+  p_name text,
+  p_time_local time,
+  p_timezone text,
+  p_start_date date,
+  p_device_ids uuid[],
+  p_description text default null,
+  p_single_use boolean default false,
+  p_every_day boolean default false,
+  p_monday boolean default false,
+  p_tuesday boolean default false,
+  p_wednesday boolean default false,
+  p_thursday boolean default false,
+  p_friday boolean default false,
+  p_saturday boolean default false,
+  p_sunday boolean default false,
+  p_run_days integer default null
+)
+returns public.reminders
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  created public.reminders;
+  device_id uuid;
+  v_name text;
+  v_description text;
+  v_timezone text;
+  v_every_day boolean;
+  v_monday boolean;
+  v_tuesday boolean;
+  v_wednesday boolean;
+  v_thursday boolean;
+  v_friday boolean;
+  v_saturday boolean;
+  v_sunday boolean;
+  v_run_days integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Debes entrar a la app para guardar un recordatorio.';
+  end if;
+
+  if public.is_anonymous_user() then
+    raise exception 'Inicia sesión para guardar un recordatorio.';
+  end if;
+
+  v_name := trim(p_name);
+  if v_name is null or length(v_name) = 0 then
+    raise exception 'Ponle un nombre a este recordatorio.';
+  end if;
+
+  v_description := nullif(trim(coalesce(p_description, '')), '');
+  v_timezone := coalesce(nullif(trim(p_timezone), ''), 'America/Bogota');
+
+  if p_time_local is null then
+    raise exception 'Elige la hora de este recordatorio.';
+  end if;
+
+  if p_start_date is null then
+    raise exception 'Elige el día de inicio.';
+  end if;
+
+  if p_device_ids is null or coalesce(array_length(p_device_ids, 1), 0) = 0 then
+    raise exception 'Elige al menos un teléfono para este recordatorio.';
+  end if;
+
+  if p_single_use then
+    v_every_day := false;
+    v_monday := false;
+    v_tuesday := false;
+    v_wednesday := false;
+    v_thursday := false;
+    v_friday := false;
+    v_saturday := false;
+    v_sunday := false;
+    v_run_days := null;
+  elsif p_every_day then
+    v_every_day := true;
+    v_monday := false;
+    v_tuesday := false;
+    v_wednesday := false;
+    v_thursday := false;
+    v_friday := false;
+    v_saturday := false;
+    v_sunday := false;
+    v_run_days := p_run_days;
+  else
+    v_every_day := false;
+    v_monday := coalesce(p_monday, false);
+    v_tuesday := coalesce(p_tuesday, false);
+    v_wednesday := coalesce(p_wednesday, false);
+    v_thursday := coalesce(p_thursday, false);
+    v_friday := coalesce(p_friday, false);
+    v_saturday := coalesce(p_saturday, false);
+    v_sunday := coalesce(p_sunday, false);
+    v_run_days := p_run_days;
+    if not (
+      v_monday or v_tuesday or v_wednesday or v_thursday
+      or v_friday or v_saturday or v_sunday
+    ) then
+      raise exception 'Elige al menos un día de la semana.';
+    end if;
+  end if;
+
+  if v_run_days is not null and v_run_days <= 0 then
+    raise exception 'Los días de ejecución deben ser más de 0.';
+  end if;
+
+  for device_id in
+    select distinct d
+    from unnest(p_device_ids) as d
+  loop
+    if not public.is_carer_of_accompanied_device(device_id) then
+      raise exception 'Ese teléfono no está en tu familia.';
+    end if;
+  end loop;
+
+  insert into public.reminders (
+    name,
+    description,
+    time_local,
+    timezone,
+    start_date,
+    every_day,
+    monday,
+    tuesday,
+    wednesday,
+    thursday,
+    friday,
+    saturday,
+    sunday,
+    run_days,
+    single_use,
+    created_by
+  )
+  values (
+    v_name,
+    v_description,
+    p_time_local,
+    v_timezone,
+    p_start_date,
+    v_every_day,
+    v_monday,
+    v_tuesday,
+    v_wednesday,
+    v_thursday,
+    v_friday,
+    v_saturday,
+    v_sunday,
+    v_run_days,
+    p_single_use,
+    auth.uid()
+  )
+  returning * into created;
+
+  insert into public.reminder_devices (reminder_id, device_id)
+  select created.id, distinct_id
+  from (
+    select distinct d as distinct_id
+    from unnest(p_device_ids) as d
+  ) as devices;
+
+  return created;
+end;
+$$;
+
+comment on function public.create_reminder(
+  text, time, text, date, uuid[], text, boolean, boolean,
+  boolean, boolean, boolean, boolean, boolean, boolean, boolean, integer
+) is
+  'Crea un recordatorio y lo asigna a devices acompañados de las familias de quien llama (host/caregiver). No anónimos.';
+
+-- ---------------------------------------------------------------------------
+-- RLS: leer si lo creaste, suena en tu teléfono, o compartes familia.
+-- Mutar reminders / reminder_devices solo por create_reminder.
+-- ---------------------------------------------------------------------------
+
 alter table public.reminders enable row level security;
 alter table public.reminder_devices enable row level security;
 alter table public.reminder_responses enable row level security;
+
+create policy reminders_select_related
+  on public.reminders
+  for select
+  to authenticated
+  using (public.can_read_reminder(id));
+
+create policy reminder_devices_select_related
+  on public.reminder_devices
+  for select
+  to authenticated
+  using (public.can_read_reminder(reminder_id));
+
+create policy reminder_responses_select_related
+  on public.reminder_responses
+  for select
+  to authenticated
+  using (public.can_read_reminder(reminder_id));
+
+revoke all on function public.create_reminder(
+  text, time, text, date, uuid[], text, boolean, boolean,
+  boolean, boolean, boolean, boolean, boolean, boolean, boolean, integer
+) from public;
+grant execute on function public.create_reminder(
+  text, time, text, date, uuid[], text, boolean, boolean,
+  boolean, boolean, boolean, boolean, boolean, boolean, boolean, integer
+) to authenticated;
+
+grant select on public.reminders to authenticated;
+grant select on public.reminder_devices to authenticated;
+grant select on public.reminder_responses to authenticated;

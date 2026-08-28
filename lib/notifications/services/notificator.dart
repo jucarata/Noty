@@ -1,7 +1,79 @@
+import 'package:noty/core/network/backend_client.dart';
+import 'package:noty/notifications/models/new_reminder.dart';
+
 /// Fachada de la feature notifications.
 ///
-/// Las pantallas hablan solo con esta clase. Usa caché local y
-/// BackendClient para sincronizar; no es el cliente de red.
+/// Las pantallas hablan solo con esta clase. Hoy persiste en la nube;
+/// la caché local y las alarmas del SO se enganchan después.
 class Notificator {
-  Notificator();
+  Notificator({BackendClient? client})
+    : _client = client ?? BackendClient.instance;
+
+  final BackendClient _client;
+
+  /// Crea el recordatorio y lo asigna a los teléfonos elegidos.
+  Future<void> createReminder(NewReminder reminder) async {
+    try {
+      await _client.createReminder(
+        name: reminder.name,
+        description: reminder.description,
+        timeLocal: _formatTime(reminder.hour, reminder.minute),
+        timezone: reminder.timezone,
+        startDate: _formatDate(reminder.startDate),
+        singleUse: reminder.singleUse,
+        everyDay: reminder.everyDay,
+        monday: reminder.monday,
+        tuesday: reminder.tuesday,
+        wednesday: reminder.wednesday,
+        thursday: reminder.thursday,
+        friday: reminder.friday,
+        saturday: reminder.saturday,
+        sunday: reminder.sunday,
+        runDays: reminder.runDays,
+        deviceIds: reminder.deviceIds,
+      );
+    } on BackendAuthException catch (error) {
+      throw NotificatorFailure(_copyFor(error));
+    } catch (_) {
+      throw const NotificatorFailure(
+        'No pudimos guardar el recordatorio. Intentémoslo nuevamente.',
+      );
+    }
+  }
+
+  String _formatTime(int hour, int minute) {
+    final h = hour.toString().padLeft(2, '0');
+    final m = minute.toString().padLeft(2, '0');
+    return '$h:$m:00';
+  }
+
+  String _formatDate(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  String _copyFor(BackendAuthException error) {
+    if (error.code == 'missing_session') {
+      return 'Para guardar un recordatorio, entra a la app.';
+    }
+    if (error.code == 'anonymous_not_allowed') {
+      return 'Para guardar un recordatorio, entra o crea una cuenta.';
+    }
+
+    final message = error.message.trim();
+    if (message.contains('Debes entrar') ||
+        message.contains('Inicia sesión') ||
+        message.contains('Ponle un nombre') ||
+        message.contains('Elige la hora') ||
+        message.contains('Elige el día') ||
+        message.contains('Elige al menos') ||
+        message.contains('no está en tu familia') ||
+        message.contains('días de ejecución')) {
+      return message;
+    }
+
+    return 'No pudimos guardar el recordatorio. Intentémoslo nuevamente.';
+  }
 }

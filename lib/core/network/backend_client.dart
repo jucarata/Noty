@@ -292,6 +292,66 @@ class BackendClient {
     }
   }
 
+  /// Crea un recordatorio y lo une a los [deviceIds] (devices.id).
+  Future<void> createReminder({
+    required String name,
+    required String timeLocal,
+    required String timezone,
+    required String startDate,
+    required List<String> deviceIds,
+    String? description,
+    bool singleUse = false,
+    bool everyDay = false,
+    bool monday = false,
+    bool tuesday = false,
+    bool wednesday = false,
+    bool thursday = false,
+    bool friday = false,
+    bool saturday = false,
+    bool sunday = false,
+    int? runDays,
+  }) async {
+    final session = currentSession;
+    if (session == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para guardar un recordatorio.',
+        code: 'missing_session',
+      );
+    }
+    if (session.isAnonymous) {
+      throw const BackendAuthException(
+        'Inicia sesión para guardar un recordatorio.',
+        code: 'anonymous_not_allowed',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'create_reminder',
+        params: {
+          'p_name': name,
+          'p_description': ?description,
+          'p_time_local': timeLocal,
+          'p_timezone': timezone,
+          'p_start_date': startDate,
+          'p_single_use': singleUse,
+          'p_every_day': everyDay,
+          'p_monday': monday,
+          'p_tuesday': tuesday,
+          'p_wednesday': wednesday,
+          'p_thursday': thursday,
+          'p_friday': friday,
+          'p_saturday': saturday,
+          'p_sunday': sunday,
+          'p_run_days': ?runDays,
+          'p_device_ids': deviceIds,
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
   Map<String, dynamic>? _asDeviceMap(dynamic value) {
     if (value is Map<String, dynamic>) {
       return value;

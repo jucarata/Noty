@@ -8,58 +8,44 @@ El tab **Notificaciones** está en el footer de `MainShell`, entre Inicio y Fami
 
 | Pieza | Dónde |
 |---|---|
-| Lista | `lib/notifications/screens/notifications_screen.dart` |
+| Lista | `lib/notifications/screens/notifications_screen.dart` (aún vacía: no lista de la nube) |
 | Alta en 2 pasos | `lib/notifications/screens/add_notification_screen.dart` |
 | Tile de device con check | `lib/notifications/widgets/notification_device_tile.dart` |
-| Fachada (vacía) | `lib/notifications/services/notificator.dart` |
+| Fachada | `lib/notifications/services/notificator.dart` — `createReminder` |
+| Draft | `lib/notifications/models/new_reminder.dart` |
 
-El `+` abre `AddNotificationScreen` (ruta aparte, no un tab). La lista está **vacía a propósito**: aún no se guarda nada.
+El `+` abre `AddNotificationScreen`. **Guardar notificación** llama a `Notificator` → `BackendClient.createReminder` → RPC `create_reminder`.
 
 ## Flujo visual (no tocarlo salvo pedido)
 
 ### Paso 1 — ¿Qué hay que recordar?
 
-- **Nombre** (obligatorio). Ej. Tomar Losartan.
-- **Descripción** (opcional). Ej. Tomar Losartan 500 mg.
-- **Hora**, con el `TimePicker` del sistema.
-- **Zona horaria**, default `America/Bogota` (Colombia).
-- **Continuar** solo si hay nombre y hora.
-- **Volver** cierra y regresa a la lista.
+- Nombre *, descripción, hora *, fecha de inicio * (hoy), zona * (`America/Bogota`).
+- Frecuencia excluyente: **Solo una vez** (default) / **Todos los días** / **Elegir los días**.
+- Si se repite: **Días de ejecución** * o **Nunca termina**.
+- Continuar según esas reglas.
 
 ### Paso 2 — ¿En qué teléfonos sonará?
 
-- Lista los dispositivos familiares ya vinculados (`CareService.listFamilyMembers`).
-- Cada uno tiene check (`NotificationDeviceTile`).
-- **Guardar notificación** se habilita con al menos un device marcado. El handler `_save` está vacío a propósito.
-- **Volver** y el atrás del sistema vuelven al paso 1 **sin perder** nombre, descripción, hora, zona ni selección.
-
-Lógica de UI permitida hoy: campos obligatorios, habilitar botones, avanzar/volver entre pasos, cargar devices para pintar checks. Nada más.
+- Devices familiares (`CareService.listFamilyMembers`).
+- Guardar con ≥1 device → `reminders` + `reminder_devices`.
+- Éxito: “¡Listo! Has creado este recordatorio.”
 
 ## Datos (nube)
 
-Tablas: `reminders` + `reminder_devices` + `reminder_responses` (`supabase/migrations/20260827020000_reminders.sql`). RLS sin políticas. La app **aún no** escribe.
+Tablas: `reminders` + `reminder_devices` + `reminder_responses`.
 
-### `reminders` — periodicidad y estado
+- Crear: RPC `create_reminder` (`supabase/migrations/20260827020000_reminders.sql`).
+- Leer: políticas RLS. Sin insert directo desde el cliente.
+- `run_days` null = `single_use` o “nunca termina”.
 
-| Campo | Comportamiento |
-|---|---|
-| `start_date` | Día civil en que **empieza** a sonar. No es la hora (`time_local`) ni `created_at`. Casi siempre el día de creación; más adelante puede ser otro. Desde aquí se cuentan `run_days` y el disparo de `single_use`. |
-| `single_use` | Default `false`. Suena **una sola vez** a `time_local` en `start_date`. No puede ir con `every_day`, lun–dom ni `run_days` (check SQL). Tras sonar, `is_active` = false. |
-| `every_day` | Default `true`. Si está activo, **manda**: lun–dom no cuentan. Incompatible con `single_use`. |
-| `monday` … `sunday` | Días concretos. Al menos uno si no es `single_use` ni `every_day`. |
-| `run_days` | Hasta cuántos **días de alarma** desde `start_date` (cada día marcado cuenta 1; una vez por día a `time_local`). Solo lunes y `7` = el 7.º lunes es el último. Lun+mar y `10` = termina el martes de la 5.ª semana. `null` si `single_use`. |
-| `is_active` | Default `true`. Con días concretos, al cumplirse `run_days` pasa a `false`. Con `single_use`, tras la única vez pasa a `false`. Si `every_day`, sigue activa hasta desactivarla a mano. Distinto de `deleted_at`. |
-
-Prioridad: `single_use` → `every_day` → días + `run_days`. El apagado automático es lógica de app/job, no un trigger SQL. El teléfono hijo solo programa alarmas si `is_active` y `deleted_at` es null.
-
-El alta visual **aún no** pide periodicidad ni `is_active`.
+Prioridad: `single_use` → `every_day` → días + `run_days`. Alarmas y apagado automático de `is_active` aún no.
 
 ## Qué no hacer todavía
 
-- No persistir desde la app (local, nube ni alarmas).
-- No llenar `Notificator` ni añadir RLS/RPCs salvo pedido explícito.
-- No añadir al alta visual los días / `run_days`, ni UI de confirmar/ignorar, alarmas ni listado real hasta que se pida.
+- No listar recordatorios en el tab (sigue el empty state).
+- No caché local, ni alarmas del SO, ni confirmar/ignorar.
 
 ## Siguiente paso (cuando se pida)
 
-RLS/RPC de recordatorios y enganchar **Guardar notificación** a `Notificator`. Las pantallas deben hablar con esa fachada, no con `BackendClient`.
+Listar (la UI lee local cuando exista; hasta entonces se puede bajar de la nube). Programar alarmas desde la caché. Confirmar / ignorar → `reminder_responses`.
