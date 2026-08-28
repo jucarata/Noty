@@ -13,26 +13,72 @@ class Notificator {
   final BackendClient _client;
 
   /// Crea el recordatorio y lo asigna a los teléfonos elegidos.
-  Future<void> createReminder(NewReminder reminder) async {
+  Future<void> createReminder(NewReminder reminder) {
+    return _upsert(reminder);
+  }
+
+  /// Guarda cambios de un recordatorio existente y sus teléfonos.
+  Future<void> updateReminder(String id, NewReminder reminder) {
+    return _upsert(reminder, id: id);
+  }
+
+  /// Elimina el recordatorio (soft delete) y lo desvincula de todos los devices.
+  Future<void> deleteReminder(String id) async {
     try {
-      await _client.createReminder(
-        name: reminder.name,
-        description: reminder.description,
-        timeLocal: _formatTime(reminder.hour, reminder.minute),
-        timezone: reminder.timezone,
-        startDate: _formatDate(reminder.startDate),
-        singleUse: reminder.singleUse,
-        everyDay: reminder.everyDay,
-        monday: reminder.monday,
-        tuesday: reminder.tuesday,
-        wednesday: reminder.wednesday,
-        thursday: reminder.thursday,
-        friday: reminder.friday,
-        saturday: reminder.saturday,
-        sunday: reminder.sunday,
-        runDays: reminder.runDays,
-        deviceIds: reminder.deviceIds,
+      await _client.deleteReminder(id: id);
+    } on BackendAuthException catch (error) {
+      throw NotificatorFailure(_copyForDelete(error));
+    } catch (_) {
+      throw const NotificatorFailure(
+        'No pudimos eliminar el recordatorio. Intentémoslo nuevamente.',
       );
+    }
+  }
+
+  Future<void> _upsert(NewReminder reminder, {String? id}) async {
+    try {
+      final timeLocal = _formatTime(reminder.hour, reminder.minute);
+      final startDate = _formatDate(reminder.startDate);
+      if (id == null) {
+        await _client.createReminder(
+          name: reminder.name,
+          description: reminder.description,
+          timeLocal: timeLocal,
+          timezone: reminder.timezone,
+          startDate: startDate,
+          singleUse: reminder.singleUse,
+          everyDay: reminder.everyDay,
+          monday: reminder.monday,
+          tuesday: reminder.tuesday,
+          wednesday: reminder.wednesday,
+          thursday: reminder.thursday,
+          friday: reminder.friday,
+          saturday: reminder.saturday,
+          sunday: reminder.sunday,
+          runDays: reminder.runDays,
+          deviceIds: reminder.deviceIds,
+        );
+      } else {
+        await _client.updateReminder(
+          id: id,
+          name: reminder.name,
+          description: reminder.description,
+          timeLocal: timeLocal,
+          timezone: reminder.timezone,
+          startDate: startDate,
+          singleUse: reminder.singleUse,
+          everyDay: reminder.everyDay,
+          monday: reminder.monday,
+          tuesday: reminder.tuesday,
+          wednesday: reminder.wednesday,
+          thursday: reminder.thursday,
+          friday: reminder.friday,
+          saturday: reminder.saturday,
+          sunday: reminder.sunday,
+          runDays: reminder.runDays,
+          deviceIds: reminder.deviceIds,
+        );
+      }
     } on BackendAuthException catch (error) {
       throw NotificatorFailure(_copyFor(error));
     } catch (_) {
@@ -108,7 +154,9 @@ class Notificator {
         message.contains('Elige el día') ||
         message.contains('Elige al menos') ||
         message.contains('no está en tu familia') ||
-        message.contains('días de ejecución')) {
+        message.contains('días de ejecución') ||
+        message.contains('No encontramos este recordatorio') ||
+        message.contains('gestionar recordatorios')) {
       return message;
     }
 
@@ -120,5 +168,19 @@ class Notificator {
       return 'Para ver tus recordatorios, entra a la app.';
     }
     return 'No pudimos cargar tus recordatorios. Intentémoslo de nuevo.';
+  }
+
+  String _copyForDelete(BackendAuthException error) {
+    if (error.code == 'missing_session' ||
+        error.code == 'anonymous_not_allowed') {
+      return 'Para eliminar un recordatorio, entra o crea una cuenta.';
+    }
+    final message = error.message.trim();
+    if (message.contains('No encontramos') ||
+        message.contains('Inicia sesión') ||
+        message.contains('Debes entrar')) {
+      return message;
+    }
+    return 'No pudimos eliminar el recordatorio. Intentémoslo nuevamente.';
   }
 }

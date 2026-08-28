@@ -46,7 +46,7 @@ Cada módulo que persiste o sincroniza tiene **su** fachada de producto:
 
 | Feature | Fachada | Responsabilidad |
 |---|---|---|
-| `notifications` | `Notificator` | Crear, listar, confirmar, sincronizar recordatorios; programar alarmas. Alta persiste con RPC `create_reminder`. Ver `notifications.md`. |
+| `notifications` | `Notificator` | Crear, editar, eliminar, listar recordatorios; confirmar y programar alarmas (aún no). Ver `notifications.md`. |
 | `care` | `CareService` | Vínculo familiar, dispositivos. UI en tab Familia + pantallas de QR. |
 | `auth` | `AuthService` | Sesión. UI actual: correo y anónimo. Google/Microsoft están en la fachada, no en la pantalla. |
 | `reports` (futuro) | p. ej. `ReportsService` | Historial y cumplimiento |
@@ -55,7 +55,7 @@ No se clona un “Notificator” por módulo. El nombre describe el dominio, no 
 
 El Notificator de recordatorios:
 
-- Expone acciones de producto: crear, listar, confirmar, sincronizar.
+- Expone acciones de producto: crear, editar, eliminar, listar, confirmar, sincronizar.
 - Lee y escribe primero en **local** (la UI siempre ve la caché).
 - Sincroniza usando **BackendClient** cuando hay red.
 - Programa y cancela alarmas del sistema operativo a partir de la caché.
@@ -190,7 +190,7 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 SQL canónico: `supabase/migrations/` (`care_identity`, `reminders`).
 
-Auth, vínculo familiar y el alta de recordatorios ya están en la app. Guardar un recordatorio usa el RPC `create_reminder` (RLS de lectura + sin insert directo). Caché local y alarmas, todavía no.
+Auth, vínculo familiar y el alta/edición de recordatorios ya están en la app. Mutar usa RPCs `create_reminder`, `update_reminder` y `delete_reminder` (RLS de lectura + sin insert directo). Caché local y alarmas, todavía no.
 
 ### Idea
 
@@ -266,7 +266,7 @@ Al reabrir el teléfono del abuelo: membresías `accompanied` de ese `device` �
 | `created_by` | Profile que lo creó. No es `families.host_id` |
 | `deleted_at` | Soft delete. `null` = vigente. No hay `is_deleted` |
 
-Migración: `supabase/migrations/20260827020000_reminders.sql` (tablas, RLS de lectura y RPC `create_reminder`). Mutar no es insert directo desde el cliente.
+Migración: `supabase/migrations/20260827020000_reminders.sql` (tablas, RLS de lectura y RPC `create_reminder`). Editar y borrar: `20260827040000_reminders_update_delete.sql`. Mutar no es insert directo desde el cliente.
 
 **`reminder_devices`**
 
@@ -299,6 +299,8 @@ Sin fila = todavía no hay respuesta (el teléfono no contestó). Las alertas fu
 | Padre crea grupo | RPC `create_family(p_name)` |
 | Padre escanea QR | RPC `link_device_to_family(p_install_id, p_family_id?)`. Si no hay familia, crea “Mi familia”. |
 | Padre crea recordatorio | RPC `create_reminder(...)` → `reminders` + `reminder_devices`. Solo cuenta real; devices de familiares acompañados. |
+| Padre edita recordatorio | RPC `update_reminder(...)` → actualiza la fila y reemplaza `reminder_devices`. Solo `created_by`. |
+| Padre elimina recordatorio | RPC `delete_reminder(p_id)` → `deleted_at`, `is_active = false`, se borran los `reminder_devices`. |
 | Purgar cuenta (**temporal**, pruebas en home) | RPC `purge_own_account` + cierre de sesión local. Quitar con el botón cuando exista Profile. |
 
 No hay políticas de INSERT directo en `families` ni `family_members`. Así un cliente no enumera ni reclama devices ajenos: hace falta el `install_id` del QR.

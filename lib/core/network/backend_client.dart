@@ -311,6 +311,99 @@ class BackendClient {
     bool sunday = false,
     int? runDays,
   }) async {
+    _requireAccountForReminders();
+
+    try {
+      await _supabase.rpc(
+        'create_reminder',
+        params: _reminderParams(
+          name: name,
+          description: description,
+          timeLocal: timeLocal,
+          timezone: timezone,
+          startDate: startDate,
+          singleUse: singleUse,
+          everyDay: everyDay,
+          monday: monday,
+          tuesday: tuesday,
+          wednesday: wednesday,
+          thursday: thursday,
+          friday: friday,
+          saturday: saturday,
+          sunday: sunday,
+          runDays: runDays,
+          deviceIds: deviceIds,
+        ),
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Actualiza un recordatorio propio y reemplaza sus devices.
+  Future<void> updateReminder({
+    required String id,
+    required String name,
+    required String timeLocal,
+    required String timezone,
+    required String startDate,
+    required List<String> deviceIds,
+    String? description,
+    bool singleUse = false,
+    bool everyDay = false,
+    bool monday = false,
+    bool tuesday = false,
+    bool wednesday = false,
+    bool thursday = false,
+    bool friday = false,
+    bool saturday = false,
+    bool sunday = false,
+    int? runDays,
+  }) async {
+    _requireAccountForReminders();
+
+    try {
+      await _supabase.rpc(
+        'update_reminder',
+        params: {
+          'p_id': id,
+          ..._reminderParams(
+            name: name,
+            description: description,
+            timeLocal: timeLocal,
+            timezone: timezone,
+            startDate: startDate,
+            singleUse: singleUse,
+            everyDay: everyDay,
+            monday: monday,
+            tuesday: tuesday,
+            wednesday: wednesday,
+            thursday: thursday,
+            friday: friday,
+            saturday: saturday,
+            sunday: sunday,
+            runDays: runDays,
+            deviceIds: deviceIds,
+          ),
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Soft delete: deja de existir para la app y se desvincula de los devices.
+  Future<void> deleteReminder({required String id}) async {
+    _requireAccountForReminders();
+
+    try {
+      await _supabase.rpc('delete_reminder', params: {'p_id': id});
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  void _requireAccountForReminders() {
     final session = currentSession;
     if (session == null) {
       throw const BackendAuthException(
@@ -324,32 +417,44 @@ class BackendClient {
         code: 'anonymous_not_allowed',
       );
     }
+  }
 
-    try {
-      await _supabase.rpc(
-        'create_reminder',
-        params: {
-          'p_name': name,
-          'p_description': ?description,
-          'p_time_local': timeLocal,
-          'p_timezone': timezone,
-          'p_start_date': startDate,
-          'p_single_use': singleUse,
-          'p_every_day': everyDay,
-          'p_monday': monday,
-          'p_tuesday': tuesday,
-          'p_wednesday': wednesday,
-          'p_thursday': thursday,
-          'p_friday': friday,
-          'p_saturday': saturday,
-          'p_sunday': sunday,
-          'p_run_days': ?runDays,
-          'p_device_ids': deviceIds,
-        },
-      );
-    } on PostgrestException catch (error) {
-      throw BackendAuthException(error.message, code: error.code);
-    }
+  Map<String, dynamic> _reminderParams({
+    required String name,
+    required String timeLocal,
+    required String timezone,
+    required String startDate,
+    required List<String> deviceIds,
+    String? description,
+    required bool singleUse,
+    required bool everyDay,
+    required bool monday,
+    required bool tuesday,
+    required bool wednesday,
+    required bool thursday,
+    required bool friday,
+    required bool saturday,
+    required bool sunday,
+    int? runDays,
+  }) {
+    return {
+      'p_name': name,
+      'p_description': description,
+      'p_time_local': timeLocal,
+      'p_timezone': timezone,
+      'p_start_date': startDate,
+      'p_single_use': singleUse,
+      'p_every_day': everyDay,
+      'p_monday': monday,
+      'p_tuesday': tuesday,
+      'p_wednesday': wednesday,
+      'p_thursday': thursday,
+      'p_friday': friday,
+      'p_saturday': saturday,
+      'p_sunday': sunday,
+      'p_run_days': runDays,
+      'p_device_ids': deviceIds,
+    };
   }
 
   /// Recordatorios vigentes de quien llama, con los devices asignados.

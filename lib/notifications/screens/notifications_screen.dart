@@ -100,6 +100,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _openEdit(Reminder reminder) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AddNotificationScreen(
+          notificator: _notificator,
+          reminder: reminder,
+        ),
+      ),
+    );
+    if (mounted) {
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -184,6 +198,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             timeLabel: reminder.timeLabel,
             nextDayLabel: reminder.nextDayLabel,
             deviceLabel: reminder.deviceLabel,
+            isActive: reminder.isActive,
+            onTap: () => unawaited(_openEdit(reminder)),
           );
         },
       ),

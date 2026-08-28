@@ -7,17 +7,24 @@ import 'package:noty/care/models/linked_device.dart';
 import 'package:noty/care/services/care_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
 import 'package:noty/notifications/models/new_reminder.dart';
+import 'package:noty/notifications/models/reminder.dart';
 import 'package:noty/notifications/services/notificator.dart';
 import 'package:noty/notifications/widgets/notification_device_tile.dart';
 
 enum _RepeatMode { once, everyDay, weekdays }
 
-/// Alta visual de un recordatorio, en dos pasos.
+/// Alta o edición de un recordatorio, en dos pasos.
 class AddNotificationScreen extends StatefulWidget {
-  const AddNotificationScreen({super.key, this.careService, this.notificator});
+  const AddNotificationScreen({
+    super.key,
+    this.careService,
+    this.notificator,
+    this.reminder,
+  });
 
   final CareService? careService;
   final Notificator? notificator;
+  final Reminder? reminder;
 
   @override
   State<AddNotificationScreen> createState() => _AddNotificationScreenState();
@@ -45,6 +52,8 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
   final _selectedDeviceIds = <String>{};
   var _busy = false;
   var _done = false;
+
+  bool get _isEditing => widget.reminder != null;
 
   bool get _hasValidRunDays {
     final days = int.tryParse(_runDaysController.text.trim());
@@ -77,6 +86,45 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
     _notificator = widget.notificator ?? Notificator();
     _nameController.addListener(_onFieldsChanged);
     _runDaysController.addListener(_onFieldsChanged);
+    _prefill(widget.reminder);
+  }
+
+  void _prefill(Reminder? reminder) {
+    if (reminder == null) {
+      return;
+    }
+
+    _nameController.text = reminder.name;
+    _descriptionController.text = reminder.description ?? '';
+    _time = TimeOfDay(hour: reminder.hour, minute: reminder.minute);
+    _timeZoneId = reminder.timezone;
+    _startDate = DateUtils.dateOnly(reminder.startDate);
+    _neverEnds = !reminder.singleUse && reminder.runDays == null;
+    if (reminder.runDays != null) {
+      _runDaysController.text = '${reminder.runDays}';
+    }
+    _selectedDeviceIds
+      ..clear()
+      ..addAll(reminder.devices.map((device) => device.id));
+
+    if (reminder.singleUse) {
+      _repeatMode = _RepeatMode.once;
+    } else if (reminder.everyDay) {
+      _repeatMode = _RepeatMode.everyDay;
+    } else {
+      _repeatMode = _RepeatMode.weekdays;
+      _selectedWeekdays
+        ..clear()
+        ..addAll({
+          if (reminder.monday) DateTime.monday,
+          if (reminder.tuesday) DateTime.tuesday,
+          if (reminder.wednesday) DateTime.wednesday,
+          if (reminder.thursday) DateTime.thursday,
+          if (reminder.friday) DateTime.friday,
+          if (reminder.saturday) DateTime.saturday,
+          if (reminder.sunday) DateTime.sunday,
+        });
+    }
   }
 
   @override
@@ -174,10 +222,14 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
 
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(DateTime.now());
+    final firstDate = _isEditing && _startDate.isBefore(today)
+        ? _startDate
+        : today;
+    final initialDate = _startDate.isBefore(firstDate) ? firstDate : _startDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _startDate.isBefore(today) ? today : _startDate,
-      firstDate: today,
+      initialDate: initialDate,
+      firstDate: firstDate,
       lastDate: DateTime(today.year + 5),
       helpText: 'Elige el día de inicio',
       cancelText: 'Cancelar',
@@ -236,7 +288,11 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
 
     setState(() => _busy = true);
     try {
-      await _notificator.createReminder(_draft());
+      if (_isEditing) {
+        await _notificator.updateReminder(widget.reminder!.id, _draft());
+      } else {
+        await _notificator.createReminder(_draft());
+      }
       if (!mounted) {
         return;
       }
@@ -261,6 +317,55 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _confirmDelete() async {
+    if (!_isEditing || _busy) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('¿Eliminar este recordatorio?'),
+          content: const Text(
+            'Dejará de sonar en todos los teléfonos. Esta acción no se puede deshacer.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFDC2626),
+              ),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await _notificator.deleteReminder(widget.reminder!.id);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+    } on NotificatorFailure catch (error) {
+      _failSave(error.message);
+    } catch (_) {
+      _failSave(
+        'No pudimos eliminar el recordatorio. Intentémoslo nuevamente.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -279,7 +384,9 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
             onPressed: _busy ? null : _onBack,
             icon: const Icon(Icons.arrow_back_rounded),
           ),
-          title: const Text('Añadir notificación'),
+          title: Text(
+            _isEditing ? 'Editar notificación' : 'Añadir notificación',
+          ),
         ),
         body: SafeArea(child: _done ? _success(context) : _form(context)),
       ),
@@ -332,7 +439,9 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                '¡Listo! Has creado este recordatorio.',
+                _isEditing
+                    ? '¡Listo! Guardamos los cambios.'
+                    : '¡Listo! Has creado este recordatorio.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
@@ -341,7 +450,9 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                'Ya está unido a los teléfonos que elegiste.',
+                _isEditing
+                    ? 'El recordatorio quedó actualizado en los teléfonos que elegiste.'
+                    : 'Ya está unido a los teléfonos que elegiste.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge
                     ?.copyWith(color: AppColors.grisMedio),
@@ -406,7 +517,7 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
             label: _RequiredLabel('Zona horaria'),
           ),
           items: [
-            for (final zone in _TimeZoneOption.all)
+            for (final zone in _timeZoneOptions)
               DropdownMenuItem(
                 value: zone.id,
                 child: Text(zone.label, overflow: TextOverflow.ellipsis),
@@ -581,11 +692,7 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
             onPressed: _canContinue ? _goToStep2 : null,
             child: const Text('Continuar'),
           ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: _busy ? null : _onBack,
-            child: const Text('Volver'),
-          ),
+          _deleteButton(),
         ],
       );
     }
@@ -597,10 +704,34 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
           onPressed: _canSave && !_busy ? _save : null,
           child: const Text('Guardar notificación'),
         ),
+        _deleteButton(),
+      ],
+    );
+  }
+
+  List<_TimeZoneOption> get _timeZoneOptions {
+    final zones = [..._TimeZoneOption.all];
+    if (zones.every((zone) => zone.id != _timeZoneId)) {
+      zones.insert(0, _TimeZoneOption(_timeZoneId, _timeZoneId));
+    }
+    return zones;
+  }
+
+  Widget _deleteButton() {
+    if (!_isEditing) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         const SizedBox(height: 8),
-        OutlinedButton(
-          onPressed: _busy ? null : _onBack,
-          child: const Text('Volver'),
+        FilledButton(
+          onPressed: _busy ? null : _confirmDelete,
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFDC2626),
+            foregroundColor: AppColors.blanco,
+          ),
+          child: const Text('Eliminar'),
         ),
       ],
     );

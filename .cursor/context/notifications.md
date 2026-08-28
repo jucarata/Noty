@@ -12,10 +12,10 @@ El tab **Notificaciones** está en el footer de `MainShell`, entre Inicio y Fami
 | Alta en 2 pasos | `lib/notifications/screens/add_notification_screen.dart` |
 | Tile de device con check | `lib/notifications/widgets/notification_device_tile.dart` |
 | Tarjeta de lista | `lib/notifications/widgets/reminder_card.dart` |
-| Fachada | `lib/notifications/services/notificator.dart` — `createReminder`, `listReminders` |
+| Fachada | `lib/notifications/services/notificator.dart` — `createReminder`, `updateReminder`, `deleteReminder`, `listReminders` |
 | Modelos | `new_reminder.dart`, `reminder.dart` |
 
-El `+` abre `AddNotificationScreen`. **Guardar notificación** llama a `Notificator` → `BackendClient.createReminder` → RPC `create_reminder`.
+El `+` abre `AddNotificationScreen` para crear. Tocar una tarjeta abre la misma pantalla con los campos llenos para editar. **Guardar notificación** llama a `Notificator.createReminder` o `updateReminder`. **Eliminar** pide confirmación y llama a `deleteReminder` (soft delete + quita todos los `reminder_devices`).
 
 ## Flujo visual (no tocarlo salvo pedido)
 
@@ -30,13 +30,15 @@ El `+` abre `AddNotificationScreen`. **Guardar notificación** llama a `Notifica
 
 - Devices familiares (`CareService.listFamilyMembers`).
 - Guardar con ≥1 device → `reminders` + `reminder_devices`.
-- Éxito: “¡Listo! Has creado este recordatorio.”
+- Éxito: “¡Listo! Has creado este recordatorio.” / al editar: “¡Listo! Guardamos los cambios.”
+- En edición: botón **Eliminar** (paso 1 y 2). Confirma y desvincula todos los teléfonos.
 
 ## Datos (nube)
 
 Tablas: `reminders` + `reminder_devices` + `reminder_responses`.
 
 - Crear: RPC `create_reminder` (`supabase/migrations/20260827020000_reminders.sql`).
+- Editar / eliminar: RPCs `update_reminder` y `delete_reminder` (`supabase/migrations/20260827040000_reminders_update_delete.sql`). Solo quien lo creó (`created_by`). `delete_reminder` pone `deleted_at`, `is_active = false` y borra `reminder_devices`.
 - Leer: políticas RLS. Sin insert directo desde el cliente.
 - `run_days` null = `single_use` o “nunca termina”.
 

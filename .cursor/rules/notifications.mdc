@@ -11,14 +11,14 @@ Fuente: `.cursor/context/notifications.md`.
 ## Ya está (no rehacer)
 
 - Tab **Notificaciones** en el footer, entre Inicio y Familia.
-- Lista de recordatorios (nombre, descripción, hora, próximo día, familiar) + `+` → `AddNotificationScreen`.
+- Lista de recordatorios (nombre, descripción, hora, próximo día, familiar, Activa/Inactiva). `+` crea; tocar la tarjeta edita.
 - Paso 1: nombre, descripción, hora, fecha de inicio, zona, frecuencia (una vez / todos los días / elegir días), duración si se repite.
-- Paso 2: devices familiares con check. Guardar → `Notificator.createReminder`.
+- Paso 2: devices familiares con check. Guardar → `Notificator.createReminder` o `updateReminder`. Eliminar → `deleteReminder`.
 - Pantallas → `Notificator` → `BackendClient`. No importar red/DB desde la UI.
 
 ## Datos
 
-RPC `create_reminder` escribe `reminders` + `reminder_devices`. RLS de lectura. `run_days` null si `single_use` o no termina.
+RPC `create_reminder` escribe `reminders` + `reminder_devices`. `update_reminder` reemplaza los devices. `delete_reminder` es soft delete y desvincula todos. RLS de lectura. `run_days` null si `single_use` o no termina.
 
 ## Siguiente (solo si se pide)
 
