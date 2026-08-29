@@ -15,10 +15,12 @@ import io.flutter.plugin.common.MethodChannel
 object AlarmLaunchHelper {
     const val CHANNEL = "com.noty.noty/alarm_sound"
     const val EXTRA_ALARM_PAYLOAD = "alarm_payload"
+    const val EXTRA_DISMISS_AFTER = "dismiss_after_alarm"
 
     private var pendingAlarmPayload: String? = null
     private var lastDeliveredPayload: String? = null
     private var alarmChannel: MethodChannel? = null
+    private var shouldDismissToBackground = false
 
     fun storePayload(payload: String) {
         if (payload.isNotEmpty()) {
@@ -58,6 +60,7 @@ object AlarmLaunchHelper {
                 }
                 "finishAlarmOverlay" -> {
                     AlarmSoundHolder.stop()
+                    dismissOverlayActivity()
                     result.success(null)
                 }
                 "scheduleNativeAlarm" -> {
@@ -113,8 +116,12 @@ object AlarmLaunchHelper {
 
     fun capturePayload(intent: Intent?) {
         val payload = intent?.getStringExtra(EXTRA_ALARM_PAYLOAD)
-        if (!payload.isNullOrEmpty()) {
-            pendingAlarmPayload = payload
+        if (payload.isNullOrEmpty()) {
+            return
+        }
+        pendingAlarmPayload = payload
+        if (intent.hasExtra(EXTRA_DISMISS_AFTER)) {
+            shouldDismissToBackground = intent.getBooleanExtra(EXTRA_DISMISS_AFTER, false)
         }
     }
 
@@ -138,6 +145,30 @@ object AlarmLaunchHelper {
     fun clearDeliveryState() {
         pendingAlarmPayload = null
         lastDeliveredPayload = null
+    }
+
+    /// Si Noty no estaba en primer plano, al confirmar hay que volver a la app anterior.
+    fun dismissOverlayActivity() {
+        if (!shouldDismissToBackground) {
+            return
+        }
+        shouldDismissToBackground = false
+        val activity = NotyApplication.currentActivity ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setShowWhenLocked(false)
+            activity.setTurnScreenOn(false)
+        } else {
+            @Suppress("DEPRECATION")
+            activity.window.clearFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+        }
+        val moved = activity.moveTaskToBack(true)
+        if (!moved) {
+            activity.finish()
+        }
     }
 
     fun bindAlarmChannel(context: android.content.Context, flutterEngine: FlutterEngine) {
@@ -192,7 +223,11 @@ object AlarmLaunchHelper {
         )
     }
 
-    fun alarmActivityIntent(context: android.content.Context, payload: String): Intent {
+    fun alarmActivityIntent(
+        context: android.content.Context,
+        payload: String,
+        dismissAfter: Boolean = false,
+    ): Intent {
         storePayload(payload)
         return Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -200,6 +235,7 @@ object AlarmLaunchHelper {
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra(EXTRA_ALARM_PAYLOAD, payload)
+            putExtra(EXTRA_DISMISS_AFTER, dismissAfter)
         }
     }
 

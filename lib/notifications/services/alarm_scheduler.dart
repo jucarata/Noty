@@ -330,6 +330,11 @@ class AlarmScheduler {
     return _androidBridge.consumeLaunchPayload();
   }
 
+  /// Cierra Noty si la alarma se mostró encima de otra app.
+  Future<void> dismissAlarmOverlay() {
+    return _androidBridge.finishAlarmOverlay();
+  }
+
   int _notificationIdFor(String reminderId) {
     return reminderId.hashCode & 0x7fffffff;
   }

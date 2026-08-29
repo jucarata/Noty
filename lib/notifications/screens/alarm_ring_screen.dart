@@ -73,6 +73,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
 
   Future<void> _closeAlarmScreen() async {
     await _soundPlayer.stop(reminderId: widget.reminder.id);
+    await _notificator.dismissAlarmOverlay();
     if (mounted) {
       Navigator.of(context).pop();
     }

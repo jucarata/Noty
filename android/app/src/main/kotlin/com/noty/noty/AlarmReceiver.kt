@@ -44,7 +44,11 @@ class AlarmReceiver : BroadcastReceiver() {
             // Fallback si el servicio no puede arrancar.
         }
 
-        val launchIntent = AlarmLaunchHelper.alarmActivityIntent(context, payload)
+        val launchIntent = AlarmLaunchHelper.alarmActivityIntent(
+            context,
+            payload,
+            dismissAfter = NotyApplication.currentActivity == null,
+        )
         val pendingLaunch = PendingIntent.getActivity(
             context,
             payload.hashCode(),

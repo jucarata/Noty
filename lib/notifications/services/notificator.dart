@@ -220,6 +220,11 @@ class Notificator {
     );
   }
 
+  /// Si la alarma se mostró encima de otra app, Noty vuelve al fondo.
+  Future<void> dismissAlarmOverlay() {
+    return _scheduler.dismissAlarmOverlay();
+  }
+
   /// Marca la ocurrencia como ignorada (p. ej. tras 90 s sin confirmar).
   Future<void> ignoreOccurrence({
     required String reminderId,

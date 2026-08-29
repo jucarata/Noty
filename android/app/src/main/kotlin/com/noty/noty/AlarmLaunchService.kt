@@ -27,7 +27,12 @@ class AlarmLaunchService : Service() {
         val channelId = "noty_alarm_launch"
         ensureChannel(channelId)
 
-        val launchIntent = AlarmLaunchHelper.alarmActivityIntent(this, payload)
+        val dismissAfter = NotyApplication.currentActivity == null
+        val launchIntent = AlarmLaunchHelper.alarmActivityIntent(
+            this,
+            payload,
+            dismissAfter = dismissAfter,
+        )
         val pendingLaunch = PendingIntent.getActivity(
             this,
             payload.hashCode(),

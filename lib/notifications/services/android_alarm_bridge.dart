@@ -71,6 +71,18 @@ class AndroidAlarmBridge {
     await _channel.invokeMethod<void>('openFullScreenIntentSettings');
   }
 
+  /// Si la alarma abrió Noty encima de otra app, la manda al fondo.
+  Future<void> finishAlarmOverlay() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+    try {
+      await _channel.invokeMethod<void>('finishAlarmOverlay');
+    } catch (error) {
+      debugPrint('Noty cerrar overlay de alarma: $error');
+    }
+  }
+
   void bindLaunchHandler(void Function(AlarmPayload payload) handler) {
     if (kIsWeb || !Platform.isAndroid) {
       return;

@@ -49,6 +49,7 @@ La persona **acompañada** (sesión anónima, p. ej. el abuelo) **ve** la lista 
 - Sonido de alarma del **sistema** en loop (Android) mientras la pantalla está abierta.
 - Si no confirma en **90 segundos** → se marca `ignored`, se apaga el sonido y se cierra.
 - Tras confirmar o timeout, se reprograma la **siguiente** ocurrencia (si aplica).
+- Si Noty se abrió encima de otra app (full screen), al confirmar **solo se cierra** esa pantalla y Noty vuelve al fondo. No deja al abuelo dentro de Inicio. Si ya estaba en Noty, solo se hace pop.
 
 ## Datos (nube)
 
@@ -168,6 +169,7 @@ Las alarmas se programan **desde la caché local**, no desde la red en el moment
 - `createReminder` / `updateReminder` / `deleteReminder` — nube + refresh. Solo si `canManageReminders`.
 - `listReminders()` — **solo caché local**. La persona acompañada también lista; no muta.
 - `confirmOccurrence` / `ignoreOccurrence` — respuesta local + cola + reprogramar.
+- `dismissAlarmOverlay` — si la alarma abrió Noty encima de otra app, la manda al fondo.
 - `localChanges` — stream para que la lista se actualice sola.
 
 Pantallas y widgets **no** importan `BackendClient`, Supabase ni plugins de alarmas.
