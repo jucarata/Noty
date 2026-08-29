@@ -214,6 +214,31 @@ class ReminderSync {
     unawaited(_flushPendingResponses());
   }
 
+  /// Cancela alarmas del SO y vacía la caché de este teléfono.
+  Future<void> clearLocalState() async {
+    _debounce?.cancel();
+    await stopListening();
+    while (_syncing) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    _syncing = true;
+    try {
+      final reminders = await _cache.readReminders();
+      for (final reminder in reminders) {
+        try {
+          await _scheduler.cancelReminder(reminder.id);
+        } catch (error) {
+          debugPrint('Noty cancel alarma ${reminder.id}: $error');
+        }
+      }
+      await _scheduler.cancelAll();
+      await _cache.clear();
+      await _registry.clear();
+    } finally {
+      _syncing = false;
+    }
+  }
+
   bool _sameReminders(List<Reminder> a, List<Reminder> b) {
     if (a.length != b.length) {
       return false;

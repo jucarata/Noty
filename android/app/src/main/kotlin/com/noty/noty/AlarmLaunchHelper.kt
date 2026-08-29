@@ -73,6 +73,18 @@ object AlarmLaunchHelper {
                         result.success(null)
                     }
                 }
+                "cancelAllNativeAlarms" -> {
+                    val rawIds = call.argument<List<Any?>>("notificationIds").orEmpty()
+                    val ids = rawIds.mapNotNull { item ->
+                        (item as? Number)?.toInt()
+                    }
+                    NativeAlarmScheduler.cancelAll(
+                        NotyApplication.instance.applicationContext,
+                        ids,
+                    )
+                    clearDeliveryState()
+                    result.success(null)
+                }
                 "canUseFullScreenIntent" -> {
                     val manager =
                         NotyApplication.instance.getSystemService(NotificationManager::class.java)

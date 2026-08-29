@@ -131,6 +131,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 children: [
                   HomeScreen(authService: _auth),
                   NotificationsScreen(
+                    authService: _auth,
                     isSelected: selected == AppDestination.notifications,
                   ),
                   if (showFamily)

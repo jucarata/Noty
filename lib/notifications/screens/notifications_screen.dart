@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:noty/auth/models/auth_session.dart';
+import 'package:noty/auth/services/auth_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
 import 'package:noty/notifications/models/new_reminder.dart';
 import 'package:noty/notifications/models/reminder.dart';
@@ -8,14 +10,17 @@ import 'package:noty/notifications/screens/add_notification_screen.dart';
 import 'package:noty/notifications/services/notificator.dart';
 import 'package:noty/notifications/widgets/reminder_card.dart';
 
-/// Lista de recordatorios creados. Recarga al volver al tab y tras añadir.
+/// Lista de recordatorios. Quien cuida puede crear y editar; quien recibe
+/// (sesión anónima) solo ve las alarmas que le asignaron.
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
     super.key,
+    this.authService,
     this.notificator,
     this.isSelected = true,
   });
 
+  final AuthService? authService;
   final Notificator? notificator;
   final bool isSelected;
 
@@ -24,6 +29,7 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  late final AuthService _auth;
   late final Notificator _notificator;
   StreamSubscription<void>? _localSubscription;
 
@@ -34,6 +40,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+    _auth = widget.authService ?? AuthService();
     _notificator = widget.notificator ?? Notificator.instance;
     _localSubscription = _notificator.localChanges.listen((_) {
       if (mounted) {
@@ -132,6 +139,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _openAdd() async {
+    if (!_notificator.canManageReminders) {
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AddNotificationScreen(notificator: _notificator),
@@ -143,6 +153,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _openEdit(Reminder reminder) async {
+    if (!_notificator.canManageReminders) {
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AddNotificationScreen(
@@ -158,50 +171,60 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return StreamBuilder<AuthSession?>(
+      initialData: _auth.currentSession,
+      stream: _auth.sessions,
+      builder: (context, snapshot) {
+        final canManage = snapshot.data?.isAnonymous == false;
+        return Scaffold(
+          body: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Notificaciones',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Notificaciones',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                      ),
+                      if (canManage)
+                        IconButton.filled(
+                          onPressed: _openAdd,
+                          tooltip: 'Añadir notificación',
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.azulNoty,
+                            foregroundColor: AppColors.blanco,
+                            minimumSize: const Size(48, 48),
+                          ),
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                    ],
                   ),
-                  IconButton.filled(
-                    onPressed: _openAdd,
-                    tooltip: 'Añadir notificación',
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppColors.azulNoty,
-                      foregroundColor: AppColors.blanco,
-                      minimumSize: const Size(48, 48),
-                    ),
-                    icon: const Icon(Icons.add_rounded),
+                  const SizedBox(height: 8),
+                  Text(
+                    canManage
+                        ? 'Los recordatorios que acompañan el día a día.'
+                        : 'Estos avisos te van a acompañar. Solo tu familia puede cambiarlos.',
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(color: AppColors.grisMedio),
                   ),
+                  const SizedBox(height: 24),
+                  Expanded(child: _body(context, canManage: canManage)),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Los recordatorios que acompañan el día a día.',
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(color: AppColors.grisMedio),
-              ),
-              const SizedBox(height: 24),
-              Expanded(child: _body(context)),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _body(BuildContext context) {
+  Widget _body(BuildContext context, {required bool canManage}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -218,9 +241,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (_reminders.isEmpty) {
       return _message(
         context,
-        text: 'Todavía no hay recordatorios. Pulsa + para añadir el primero.',
-        actionLabel: 'Añadir notificación',
-        onAction: _openAdd,
+        text: canManage
+            ? 'Todavía no hay recordatorios. Pulsa + para añadir el primero.'
+            : 'Todavía no hay recordatorios. Cuando tu familia te asigne uno, aparecerá aquí.',
+        actionLabel: canManage ? 'Añadir notificación' : null,
+        onAction: canManage ? _openAdd : null,
       );
     }
 
@@ -241,7 +266,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             nextDayLabel: reminder.nextDayLabel,
             deviceLabel: reminder.deviceLabel,
             isActive: reminder.isActive,
-            onTap: () => unawaited(_openEdit(reminder)),
+            onTap: canManage ? () => unawaited(_openEdit(reminder)) : null,
           );
         },
       ),
@@ -251,8 +276,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _message(
     BuildContext context, {
     required String text,
-    required String actionLabel,
-    required VoidCallback onAction,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     return Center(
       child: ConstrainedBox(
@@ -266,8 +291,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               style: Theme.of(context).textTheme.bodyLarge
                   ?.copyWith(color: AppColors.grisMedio),
             ),
-            const SizedBox(height: 24),
-            FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            ],
           ],
         ),
       ),

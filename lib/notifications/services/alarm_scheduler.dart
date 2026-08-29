@@ -7,6 +7,7 @@ import 'package:noty/notifications/services/alarm_sound_player.dart';
 import 'package:noty/notifications/services/android_alarm_bridge.dart';
 import 'package:noty/notifications/services/timezone_config.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 typedef AlarmTapHandler = void Function(AlarmPayload payload);
@@ -33,16 +34,22 @@ class AlarmScheduler {
   AlarmScheduler({
     FlutterLocalNotificationsPlugin? notifications,
     AndroidAlarmBridge? androidBridge,
+    SharedPreferences? preferences,
   }) : _notifications = notifications ?? FlutterLocalNotificationsPlugin(),
-       _androidBridge = androidBridge ?? AndroidAlarmBridge();
+       _androidBridge = androidBridge ?? AndroidAlarmBridge(),
+       _preferencesFuture = preferences != null
+           ? Future.value(preferences)
+           : SharedPreferences.getInstance();
 
   static const _channelId = 'noty_alarms_v2';
   static const _channelName = 'Recordatorios Noty';
   static const _channelDescription =
       'Alarmas de recordatorios que requieren confirmación';
+  static const _scheduledIdsKey = 'noty.alarms.scheduled_ids';
 
   final FlutterLocalNotificationsPlugin _notifications;
   final AndroidAlarmBridge _androidBridge;
+  final Future<SharedPreferences> _preferencesFuture;
   var _initialized = false;
   AlarmTapHandler? _onAlarmTap;
 
@@ -154,7 +161,7 @@ class AlarmScheduler {
       }
     }
 
-    await _cancelStaleNotifications(activeIds, reminders: reminders);
+    await _cancelStaleNotifications(activeIds);
 
     if (kDebugMode && (scheduled > 0 || failed > 0)) {
       final pending = await _notifications.pendingNotificationRequests();
@@ -176,16 +183,23 @@ class AlarmScheduler {
     final notificationId = _notificationIdFor(reminderId);
     await _notifications.cancel(notificationId);
     await _androidBridge.cancel(notificationId: notificationId);
+    final ids = await _readScheduledIds();
+    if (ids.remove(notificationId)) {
+      await _writeScheduledIds(ids);
+    }
   }
 
   Future<void> cancelAll() async {
+    final ids = await _readScheduledIds();
     if (!kIsWeb && Platform.isAndroid) {
-      final pending = await _notifications.pendingNotificationRequests();
-      for (final request in pending) {
-        await _androidBridge.cancel(notificationId: request.id);
+      await _androidBridge.cancelAll(notificationIds: ids.toList());
+    } else {
+      for (final id in ids) {
+        await _notifications.cancel(id);
       }
     }
     await _notifications.cancelAll();
+    await _writeScheduledIds({});
   }
 
   Future<void> dismissActiveNotification(String reminderId) async {
@@ -274,26 +288,41 @@ class AlarmScheduler {
     );
   }
 
-  Future<void> _cancelStaleNotifications(
-    Set<int> activeIds, {
-    required List<Reminder> reminders,
-  }) async {
-    if (!kIsWeb && Platform.isAndroid) {
-      for (final reminder in reminders) {
-        final notificationId = _notificationIdFor(reminder.id);
-        if (!activeIds.contains(notificationId)) {
-          await _androidBridge.cancel(notificationId: notificationId);
-        }
+  Future<void> _cancelStaleNotifications(Set<int> activeIds) async {
+    final previous = await _readScheduledIds();
+    for (final id in previous) {
+      if (!activeIds.contains(id)) {
+        await _notifications.cancel(id);
+        await _androidBridge.cancel(notificationId: id);
       }
+    }
+    if (kIsWeb || Platform.isAndroid) {
+      await _writeScheduledIds(activeIds);
       return;
     }
     final pending = await _notifications.pendingNotificationRequests();
     for (final request in pending) {
       if (!activeIds.contains(request.id)) {
         await _notifications.cancel(request.id);
-        await _androidBridge.cancel(notificationId: request.id);
       }
     }
+    await _writeScheduledIds(activeIds);
+  }
+
+  Future<Set<int>> _readScheduledIds() async {
+    final prefs = await _preferencesFuture;
+    final raw = prefs.getStringList(_scheduledIdsKey) ?? const [];
+    return {
+      for (final value in raw)
+        if (int.tryParse(value) != null) int.parse(value),
+    };
+  }
+
+  Future<void> _writeScheduledIds(Set<int> ids) async {
+    final prefs = await _preferencesFuture;
+    await prefs.setStringList(_scheduledIdsKey, [
+      for (final id in ids) id.toString(),
+    ]);
   }
 
   /// Alarma lanzada por el receptor nativo antes de que Flutter esté listo.

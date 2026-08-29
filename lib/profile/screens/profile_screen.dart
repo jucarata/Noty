@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:noty/auth/models/auth_session.dart';
 import 'package:noty/auth/services/auth_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
+import 'package:noty/notifications/services/notificator.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, this.authService});
+  const ProfileScreen({super.key, this.authService, this.notificator});
 
   final AuthService? authService;
+  final Notificator? notificator;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -14,12 +16,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final AuthService _auth;
+  late final Notificator _notificator;
   var _busy = false;
 
   @override
   void initState() {
     super.initState();
     _auth = widget.authService ?? AuthService();
+    _notificator = widget.notificator ?? Notificator.instance;
   }
 
   Future<void> _signOut() async {
@@ -36,8 +40,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return AlertDialog(
           title: const Text('¿Borrar esta cuenta de prueba?'),
           content: const Text(
-            'Se cierra la sesión y se elimina el usuario. '
-            'Después podrás crear otra cuenta, incluso con el mismo correo.',
+            'Se elimina el usuario, sus recordatorios y las alarmas de este '
+            'teléfono. Después podrás crear otra cuenta, incluso con el mismo correo.',
           ),
           actions: [
             TextButton(
@@ -56,7 +60,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     await _run(
-      _auth.purgeCurrentUser,
+      () async {
+        await _notificator.clearLocalAlarmsAndCache();
+        try {
+          await _auth.purgeCurrentUser();
+        } catch (error) {
+          try {
+            await _notificator.refresh();
+          } catch (_) {}
+          rethrow;
+        }
+      },
       fallback: 'No pudimos borrar la cuenta. Intentémoslo de nuevo.',
     );
   }

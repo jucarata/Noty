@@ -22,7 +22,9 @@ El tab **Notificaciones** está en el footer de `MainShell`, entre Inicio y Fami
 | Sonido en pantalla | `lib/notifications/services/alarm_sound_player.dart` |
 | Modelos | `new_reminder.dart`, `reminder.dart` |
 
-El `+` abre `AddNotificationScreen` para crear. Tocar una tarjeta abre la misma pantalla con los campos llenos para editar. **Guardar notificación** llama a `Notificator.createReminder` o `updateReminder`. **Eliminar** pide confirmación y llama a `deleteReminder` (soft delete + quita todos los `reminder_devices`).
+Si hay **cuenta real** (host o quien creó el recordatorio), el `+` abre `AddNotificationScreen` para crear. Tocar una tarjeta abre la misma pantalla con los campos llenos para editar. **Guardar notificación** llama a `Notificator.createReminder` o `updateReminder`. **Eliminar** pide confirmación y llama a `deleteReminder` (soft delete + quita todos los `reminder_devices`).
+
+La persona **acompañada** (sesión anónima, p. ej. el abuelo) **ve** la lista y confirma cuando suena; **no** ve el `+` ni puede editar o eliminar. En servidor, `update_reminder` / `delete_reminder` solo los ejecuta `created_by` o el `host` de la familia (`20260829010000_reminder_manage_host.sql`).
 
 ## Flujo visual (no tocarlo salvo pedido)
 
@@ -53,7 +55,7 @@ El `+` abre `AddNotificationScreen` para crear. Tocar una tarjeta abre la misma 
 Tablas: `reminders` + `reminder_devices` + `reminder_responses`.
 
 - Crear: RPC `create_reminder` (`20260827020000_reminders.sql`).
-- Editar / eliminar: RPCs `update_reminder` y `delete_reminder` (`20260827040000_reminders_update_delete.sql`). Solo quien lo creó (`created_by`). `delete_reminder` pone `deleted_at`, `is_active = false` y borra `reminder_devices`.
+- Editar / eliminar: RPCs `update_reminder` y `delete_reminder` (`20260827040000_reminders_update_delete.sql`, permiso en `20260829010000_reminder_manage_host.sql`). Quien lo creó (`created_by`) o el `host` de la familia. No la persona acompañada (anónima). `delete_reminder` pone `deleted_at`, `is_active = false` y borra `reminder_devices`.
 - Responder: RPC `respond_to_reminder` (`20260827050000_reminder_responses_insert.sql`). `confirmed` o `ignored` por `(reminder_id, device_id, due_at)`.
 - Leer: políticas RLS. Sin insert directo en `reminders` desde el cliente.
 - `run_days` null = `single_use` o “nunca termina”.
@@ -159,8 +161,9 @@ Las alarmas se programan **desde la caché local**, no desde la red en el moment
 
 - `initialize(navigatorKey)` — timezone, alarmas, sync, Realtime.
 - `refresh()` — sync manual.
-- `createReminder` / `updateReminder` / `deleteReminder` — nube + refresh.
-- `listReminders()` — **solo caché local**.
+- `canManageReminders` — cuenta real (host/cuidador). La sesión anónima no crea ni edita.
+- `createReminder` / `updateReminder` / `deleteReminder` — nube + refresh. Solo si `canManageReminders`.
+- `listReminders()` — **solo caché local**. La persona acompañada también lista; no muta.
 - `confirmOccurrence` / `ignoreOccurrence` — respuesta local + cola + reprogramar.
 - `localChanges` — stream para que la lista se actualice sola.
 

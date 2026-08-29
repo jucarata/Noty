@@ -87,6 +87,12 @@ class _AddNotificationScreenState extends State<AddNotificationScreen> {
     _nameController.addListener(_onFieldsChanged);
     _runDaysController.addListener(_onFieldsChanged);
     _prefill(widget.reminder);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _notificator.canManageReminders) {
+        return;
+      }
+      Navigator.of(context).pop();
+    });
   }
 
   void _prefill(Reminder? reminder) {

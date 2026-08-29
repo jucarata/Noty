@@ -39,6 +39,15 @@ class AndroidAlarmBridge {
     });
   }
 
+  Future<void> cancelAll({required List<int> notificationIds}) async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+    await _channel.invokeMethod<void>('cancelAllNativeAlarms', {
+      'notificationIds': notificationIds,
+    });
+  }
+
   Future<AlarmPayload?> consumeLaunchPayload() async {
     if (kIsWeb || !Platform.isAndroid) {
       return null;

@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
 
 object NativeAlarmScheduler {
     fun schedule(
@@ -71,5 +72,15 @@ object NativeAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         alarmManager.cancel(pending)
+        pending.cancel()
+        AlarmNotificationHelper.cancel(context, notificationId)
+    }
+
+    fun cancelAll(context: Context, notificationIds: Collection<Int>) {
+        AlarmSoundHolder.stop()
+        for (id in notificationIds) {
+            cancel(context, id)
+        }
+        NotificationManagerCompat.from(context).cancelAll()
     }
 }

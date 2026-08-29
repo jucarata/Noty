@@ -63,6 +63,13 @@ class Notificator {
 
   bool get isInitialized => _initialized;
 
+  /// Crear, editar y eliminar es de quien cuida (cuenta real). La persona
+  /// acompañada con sesión anónima solo ve y confirma.
+  bool get canManageReminders {
+    final session = _client.currentSession;
+    return session != null && !session.isAnonymous;
+  }
+
   /// Espera a que [initialize] termine (alarmas listas para programarse).
   Future<void> ensureReady() async {
     if (_initialized) {
@@ -80,6 +87,8 @@ class Notificator {
   Future<void> initialize({required GlobalKey<NavigatorState> navigatorKey}) async {
     _navigatorKey = navigatorKey;
     if (_initialized) {
+      await _sync.startListening(_notifyLocalChange);
+      await _sync.sync(onLocalChange: _notifyLocalChange);
       return;
     }
     if (_initCompleter != null) {
@@ -122,11 +131,23 @@ class Notificator {
 
   Future<void> refresh() async {
     await ensureReady();
+    await _sync.startListening(_notifyLocalChange);
     await _sync.sync(onLocalChange: _notifyLocalChange);
+  }
+
+  /// Quita alarmas pendientes, sonido activo y caché local de recordatorios.
+  Future<void> clearLocalAlarmsAndCache() async {
+    await AlarmSoundPlayer().stop();
+    await _sync.clearLocalState();
+    _queuedAlarmPayload = null;
+    _activeAlarmKey = null;
+    _openingAlarm = false;
+    _notifyLocalChange();
   }
 
   /// Crea el recordatorio y lo asigna a los teléfonos elegidos.
   Future<void> createReminder(NewReminder reminder) async {
+    _requireCanManage();
     await ensureReady();
     await _upsert(reminder);
     await refresh();
@@ -134,6 +155,7 @@ class Notificator {
 
   /// Guarda cambios de un recordatorio existente y sus teléfonos.
   Future<void> updateReminder(String id, NewReminder reminder) async {
+    _requireCanManage();
     await ensureReady();
     await _upsert(reminder, id: id);
     await refresh();
@@ -141,6 +163,7 @@ class Notificator {
 
   /// Elimina el recordatorio (soft delete) y lo desvincula de todos los devices.
   Future<void> deleteReminder(String id) async {
+    _requireCanManage();
     try {
       await _client.deleteReminder(id: id);
       await _scheduler.cancelReminder(id);
@@ -278,6 +301,15 @@ class Notificator {
         unawaited(_openAlarmFromPayload(queued));
       }
     }
+  }
+
+  void _requireCanManage() {
+    if (canManageReminders) {
+      return;
+    }
+    throw const NotificatorFailure(
+      'Solo quien creó el recordatorio o el host de la familia puede cambiarlo.',
+    );
   }
 
   Future<void> _upsert(NewReminder reminder, {String? id}) async {

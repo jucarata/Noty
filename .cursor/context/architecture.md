@@ -154,7 +154,7 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 - `home/screens` → `notifications/services` (Notificator).
 - `home/screens` (MainShell) → `home` y `profile` (tabs del footer).
-- `profile/screens` → `auth/services` (AuthService: cerrar sesión, purgar).
+- `profile/screens` → `auth/services` (AuthService: cerrar sesión, purgar) y `notifications/services` (Notificator: cancelar alarmas al purgar).
 - `auth/screens` y `auth/widgets` → `auth/services` (AuthService).
 - `notifications/services` → `data/local`, `data/remote` y `core/network`.
 - `auth/services` → `core/network` (`BackendClient`).
@@ -299,9 +299,9 @@ Sin fila = todavía no hay respuesta (el teléfono no contestó). Las alertas fu
 | Padre crea grupo | RPC `create_family(p_name)` |
 | Padre escanea QR | RPC `link_device_to_family(p_install_id, p_family_id?)`. Si no hay familia, crea “Mi familia”. |
 | Padre crea recordatorio | RPC `create_reminder(...)` → `reminders` + `reminder_devices`. Solo cuenta real; devices de familiares acompañados. |
-| Padre edita recordatorio | RPC `update_reminder(...)` → actualiza la fila y reemplaza `reminder_devices`. Solo `created_by`. |
-| Padre elimina recordatorio | RPC `delete_reminder(p_id)` → `deleted_at`, `is_active = false`, se borran los `reminder_devices`. |
-| Purgar cuenta (**temporal**, pruebas en home) | RPC `purge_own_account` + cierre de sesión local. Quitar con el botón cuando exista Profile. |
+| Padre edita recordatorio | RPC `update_reminder(...)` → actualiza la fila y reemplaza `reminder_devices`. `created_by` o host de la familia. La persona acompañada no muta. |
+| Padre elimina recordatorio | RPC `delete_reminder(p_id)` → `deleted_at`, `is_active = false`, se borran los `reminder_devices`. Mismo permiso que editar. |
+| Purgar cuenta (**temporal**, pruebas en Perfil) | Cancela alarmas del SO + vacía caché local, RPC `purge_own_account` y cierre de sesión. |
 
 No hay políticas de INSERT directo en `families` ni `family_members`. Así un cliente no enumera ni reclama devices ajenos: hace falta el `install_id` del QR.
 
