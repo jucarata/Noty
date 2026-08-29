@@ -47,6 +47,21 @@ class AndroidAlarmBridge {
     return AlarmPayload.decode(raw);
   }
 
+  Future<bool> canUseFullScreenIntent() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return true;
+    }
+    final allowed = await _channel.invokeMethod<bool>('canUseFullScreenIntent');
+    return allowed ?? true;
+  }
+
+  Future<void> openFullScreenIntentSettings() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+    await _channel.invokeMethod<void>('openFullScreenIntentSettings');
+  }
+
   void bindLaunchHandler(void Function(AlarmPayload payload) handler) {
     if (kIsWeb || !Platform.isAndroid) {
       return;

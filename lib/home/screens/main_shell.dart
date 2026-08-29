@@ -9,6 +9,8 @@ import 'package:noty/family/screens/family_screen.dart';
 import 'package:noty/home/screens/home_screen.dart';
 import 'package:noty/home/widgets/app_bottom_nav.dart';
 import 'package:noty/notifications/screens/notifications_screen.dart';
+import 'package:noty/notifications/screens/alarm_permissions_screen.dart';
+import 'package:noty/notifications/services/alarm_permissions.dart';
 import 'package:noty/notifications/services/notificator.dart';
 import 'package:noty/profile/screens/profile_screen.dart';
 
@@ -26,6 +28,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   late final AuthService _auth;
   late final Future<void> _notificatorReady;
   var _selected = AppDestination.home;
+  var _permissionsGranted = false;
+  var _checkingPermissions = true;
 
   @override
   void initState() {
@@ -35,6 +39,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _notificatorReady = Notificator.instance.initialize(
       navigatorKey: notyNavigatorKey,
     );
+    unawaited(_checkPermissions());
+  }
+
+  Future<void> _checkPermissions() async {
+    final granted = await AlarmPermissions.instance.allGranted;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _permissionsGranted = granted;
+      _checkingPermissions = false;
+    });
   }
 
   @override
@@ -47,6 +63,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(Notificator.instance.refresh());
+      unawaited(_checkPermissions());
     }
   }
 
@@ -74,6 +91,20 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
               ),
             ),
+          );
+        }
+
+        if (_checkingPermissions) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!_permissionsGranted) {
+          return AlarmPermissionsScreen(
+            onComplete: () {
+              setState(() => _permissionsGranted = true);
+            },
           );
         }
 

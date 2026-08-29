@@ -10,35 +10,30 @@ class AlarmSoundPlayer {
     : _channel = channel ?? const MethodChannel('com.noty.noty/alarm_sound');
 
   final MethodChannel _channel;
-  var _playing = false;
 
   Future<void> start() async {
-    if (_playing) {
-      return;
-    }
     if (kIsWeb || !Platform.isAndroid) {
       return;
     }
-    _playing = true;
-
     try {
       await _channel.invokeMethod<void>('playAlarm');
     } catch (error) {
-      _playing = false;
       debugPrint('Noty sonido alarma falló: $error');
-      rethrow;
     }
   }
 
-  Future<void> stop() async {
-    if (!_playing) {
-      return;
-    }
-    _playing = false;
+  /// Siempre detiene el ringtone nativo, aunque no lo haya iniciado este player.
+  Future<void> stop({String? reminderId}) async {
     if (kIsWeb || !Platform.isAndroid) {
       return;
     }
     try {
+      if (reminderId != null) {
+        await _channel.invokeMethod<void>('stopAlarmAndDismiss', {
+          'notificationId': _notificationIdFor(reminderId),
+        });
+        return;
+      }
       await _channel.invokeMethod<void>('stopAlarm');
     } catch (error) {
       debugPrint('Noty detener alarma: $error');
@@ -47,6 +42,10 @@ class AlarmSoundPlayer {
 
   Future<void> dispose() async {
     await stop();
+  }
+
+  static int _notificationIdFor(String reminderId) {
+    return reminderId.hashCode & 0x7fffffff;
   }
 }
 

@@ -14,12 +14,14 @@ class AlarmRingScreen extends StatefulWidget {
     required this.dueAt,
     this.notificator,
     this.soundPlayer,
+    this.overlayMode = false,
   });
 
   final Reminder reminder;
   final DateTime dueAt;
   final Notificator? notificator;
   final AlarmSoundPlayer? soundPlayer;
+  final bool overlayMode;
 
   static const autoDismissDuration = Duration(seconds: 90);
 
@@ -38,18 +40,10 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
     super.initState();
     _notificator = widget.notificator ?? Notificator.instance;
     _soundPlayer = widget.soundPlayer ?? AlarmSoundPlayer();
-    unawaited(_startRinging());
+    // El sonido ya lo inició AlarmReceiver; no volver a llamar playAlarm aquí.
     _autoDismissTimer = Timer(AlarmRingScreen.autoDismissDuration, () {
       unawaited(_dismissTimedOut());
     });
-  }
-
-  Future<void> _startRinging() async {
-    try {
-      await _soundPlayer.start();
-    } catch (error) {
-      debugPrint('Noty pantalla alarma sin sonido: $error');
-    }
   }
 
   Future<void> _confirm() async {
@@ -58,14 +52,12 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
     }
     _responding = true;
     _autoDismissTimer?.cancel();
-    await _soundPlayer.stop();
+    await _soundPlayer.stop(reminderId: widget.reminder.id);
     await _notificator.confirmOccurrence(
       reminderId: widget.reminder.id,
       dueAt: widget.dueAt,
     );
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    await _closeAlarmScreen();
   }
 
   Future<void> _dismissTimedOut() async {
@@ -73,11 +65,16 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
       return;
     }
     _responding = true;
-    await _soundPlayer.stop();
+    await _soundPlayer.stop(reminderId: widget.reminder.id);
     await _notificator.ignoreOccurrence(
       reminderId: widget.reminder.id,
       dueAt: widget.dueAt,
     );
+    await _closeAlarmScreen();
+  }
+
+  Future<void> _closeAlarmScreen() async {
+    await _soundPlayer.stop(reminderId: widget.reminder.id);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -86,7 +83,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
   @override
   void dispose() {
     _autoDismissTimer?.cancel();
-    unawaited(_soundPlayer.dispose());
+    unawaited(_soundPlayer.stop(reminderId: widget.reminder.id));
     super.dispose();
   }
 

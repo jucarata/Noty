@@ -11,7 +11,6 @@ Future<void> main() async {
   await BackendClient.initialize();
   runApp(const MainApp());
 }
-
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 

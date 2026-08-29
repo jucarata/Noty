@@ -84,29 +84,20 @@ class AlarmScheduler {
       ),
     );
 
-    await _requestPermissions(androidPlugin);
-    _androidBridge.bindLaunchHandler((payload) {
-      _onAlarmTap?.call(payload);
-    });
     _initialized = true;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      // Android usa AlarmManager nativo; evitar doble apertura con flutter_local_notifications.
+      _androidBridge.bindLaunchHandler((payload) {
+        _onAlarmTap?.call(payload);
+      });
+      return;
+    }
 
     final launchDetails = await _notifications.getNotificationAppLaunchDetails();
     final response = launchDetails?.notificationResponse;
     if (response != null) {
       _handleNotificationResponse(response);
-    }
-  }
-
-  Future<void> _requestPermissions(
-    AndroidFlutterLocalNotificationsPlugin? androidPlugin,
-  ) async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final notification = await Permission.notification.request();
-      final exactAlarm = await Permission.scheduleExactAlarm.request();
-      await androidPlugin?.requestFullScreenIntentPermission();
-      debugPrint(
-        'Noty permisos: notificaciones=$notification, alarma exacta=$exactAlarm',
-      );
     }
   }
 
@@ -163,7 +154,7 @@ class AlarmScheduler {
       }
     }
 
-    await _cancelStaleNotifications(activeIds);
+    await _cancelStaleNotifications(activeIds, reminders: reminders);
 
     if (kDebugMode && (scheduled > 0 || failed > 0)) {
       final pending = await _notifications.pendingNotificationRequests();
@@ -202,6 +193,9 @@ class AlarmScheduler {
   }
 
   Future<int> pendingCount() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      return 0;
+    }
     final pending = await _notifications.pendingNotificationRequests();
     return pending.length;
   }
@@ -227,6 +221,17 @@ class AlarmScheduler {
     );
     final payload = alarmPayload.encode();
     final body = reminder.description ?? 'Es hora de tu recordatorio';
+
+    if (!kIsWeb && Platform.isAndroid) {
+      await _androidBridge.schedule(
+        notificationId: notificationId,
+        triggerAt: dueAt.toLocal(),
+        title: reminder.name,
+        body: body,
+        payload: alarmPayload,
+      );
+      return;
+    }
 
     final canExact = defaultTargetPlatform != TargetPlatform.android ||
         await Permission.scheduleExactAlarm.isGranted;
@@ -267,17 +272,21 @@ class AlarmScheduler {
       payload: payload,
       matchDateTimeComponents: null,
     );
-
-    await _androidBridge.schedule(
-      notificationId: notificationId,
-      triggerAt: dueAt.toLocal(),
-      title: reminder.name,
-      body: body,
-      payload: alarmPayload,
-    );
   }
 
-  Future<void> _cancelStaleNotifications(Set<int> activeIds) async {
+  Future<void> _cancelStaleNotifications(
+    Set<int> activeIds, {
+    required List<Reminder> reminders,
+  }) async {
+    if (!kIsWeb && Platform.isAndroid) {
+      for (final reminder in reminders) {
+        final notificationId = _notificationIdFor(reminder.id);
+        if (!activeIds.contains(notificationId)) {
+          await _androidBridge.cancel(notificationId: notificationId);
+        }
+      }
+      return;
+    }
     final pending = await _notifications.pendingNotificationRequests();
     for (final request in pending) {
       if (!activeIds.contains(request.id)) {

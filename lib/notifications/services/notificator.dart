@@ -55,6 +55,9 @@ class Notificator {
   var _initialized = false;
   Completer<void>? _initCompleter;
   final _localChanges = StreamController<void>.broadcast();
+  var _openingAlarm = false;
+  AlarmPayload? _queuedAlarmPayload;
+  String? _activeAlarmKey;
 
   Stream<void> get localChanges => _localChanges.stream;
 
@@ -92,7 +95,11 @@ class Notificator {
       _initialized = true;
       _initCompleter!.complete();
       debugPrint('Noty: inicializado; alarmas pendientes=${await _scheduler.pendingCount()}');
-      await _openPendingNativeAlarm();
+      final queued = _queuedAlarmPayload;
+      if (queued != null) {
+        _queuedAlarmPayload = null;
+        unawaited(_openAlarmFromPayload(queued));
+      }
     } catch (error, stack) {
       _initCompleter!.completeError(error, stack);
       _initCompleter = null;
@@ -199,37 +206,78 @@ class Notificator {
     _notifyLocalChange();
   }
 
-  Future<void> _openPendingNativeAlarm() async {
-    final payload = await _scheduler.consumeNativeLaunchPayload();
-    if (payload == null) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_openAlarmFromPayload(payload));
-    });
+  String _alarmKey(AlarmPayload payload) {
+    return '${payload.reminderId}|${payload.dueAt.toUtc().toIso8601String()}';
   }
 
-  Future<void> _openAlarmFromPayload(AlarmPayload payload) async {
-    final reminder = await _sync.findReminder(payload.reminderId);
+  Future<void> _openAlarmFromPayload(AlarmPayload payload, {int attempt = 0}) async {
+    final key = _alarmKey(payload);
+    if (_activeAlarmKey == key) {
+      return;
+    }
+
+    if (_openingAlarm) {
+      if (_queuedAlarmPayload != null && _alarmKey(_queuedAlarmPayload!) == key) {
+        return;
+      }
+      _queuedAlarmPayload = payload;
+      return;
+    }
+
+    if (!_initialized) {
+      if (attempt < 40) {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        return _openAlarmFromPayload(payload, attempt: attempt + 1);
+      }
+      _queuedAlarmPayload = payload;
+      return;
+    }
+
+    var reminder = await _sync.findReminder(payload.reminderId);
     if (reminder == null) {
       await refresh();
-      return;
+      reminder = await _sync.findReminder(payload.reminderId);
+      if (reminder == null) {
+        if (attempt < 5) {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          return _openAlarmFromPayload(payload, attempt: attempt + 1);
+        }
+        return;
+      }
     }
 
     final navigator = _navigatorKey?.currentState;
     if (navigator == null) {
+      if (attempt < 40) {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        return _openAlarmFromPayload(payload, attempt: attempt + 1);
+      }
+      _queuedAlarmPayload = payload;
       return;
     }
 
-    final route = MaterialPageRoute<void>(
-      builder: (_) => AlarmRingScreen(
-        reminder: reminder,
-        dueAt: payload.dueAt.toLocal(),
-      ),
-      fullscreenDialog: true,
-    );
-
-    await navigator.push(route);
+    _openingAlarm = true;
+    _activeAlarmKey = key;
+    try {
+      final route = MaterialPageRoute<void>(
+        builder: (_) => AlarmRingScreen(
+          reminder: reminder!,
+          dueAt: payload.dueAt.toLocal(),
+        ),
+        fullscreenDialog: true,
+      );
+      await navigator.push(route);
+    } finally {
+      _openingAlarm = false;
+      if (_activeAlarmKey == key) {
+        _activeAlarmKey = null;
+      }
+      final queued = _queuedAlarmPayload;
+      _queuedAlarmPayload = null;
+      if (queued != null && _alarmKey(queued) != key) {
+        unawaited(_openAlarmFromPayload(queued));
+      }
+    }
   }
 
   Future<void> _upsert(NewReminder reminder, {String? id}) async {

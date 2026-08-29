@@ -1,5 +1,6 @@
 package com.noty.noty
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,7 +15,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
-/// Dispara la alarma nativa: suena y abre Noty aunque el SO limite full-screen intents.
+/// Dispara la alarma nativa: suena y abre la pantalla de confirmación encima de otras apps.
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: return
@@ -23,18 +24,39 @@ class AlarmReceiver : BroadcastReceiver() {
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
 
         wakeScreen(context)
-
         AlarmSoundHolder.play(context.applicationContext)
+        launchAlarmOverlay(context, payload)
+        showAlarmNotification(context, notificationId, title, body, payload)
+    }
 
-        showHeadsUpNotification(context, notificationId, title, body, payload)
-
-        val launchIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(MainActivity.EXTRA_ALARM_PAYLOAD, payload)
+    private fun launchAlarmOverlay(context: Context, payload: String) {
+        val serviceIntent = Intent(context, AlarmLaunchService::class.java).apply {
+            putExtra(AlarmLaunchHelper.EXTRA_ALARM_PAYLOAD, payload)
         }
-        context.startActivity(launchIntent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+            return
+        } catch (_: Exception) {
+            // Fallback si el servicio no puede arrancar.
+        }
+
+        val launchIntent = AlarmLaunchHelper.alarmActivityIntent(context, payload)
+        val pendingLaunch = PendingIntent.getActivity(
+            context,
+            payload.hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        try {
+            pendingLaunch.send()
+        } catch (_: PendingIntent.CanceledException) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
+        }
     }
 
     private fun wakeScreen(context: Context) {
@@ -49,7 +71,7 @@ class AlarmReceiver : BroadcastReceiver() {
         wakeLock.acquire(60_000L)
     }
 
-    private fun showHeadsUpNotification(
+    private fun showAlarmNotification(
         context: Context,
         notificationId: Int,
         title: String,
@@ -67,6 +89,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 description = "Recordatorios que requieren confirmación"
                 setBypassDnd(true)
                 enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 val attrs = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -76,11 +99,8 @@ class AlarmReceiver : BroadcastReceiver() {
             manager.createNotificationChannel(channel)
         }
 
-        val tapIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(MainActivity.EXTRA_ALARM_PAYLOAD, payload)
-        }
-        val pendingTap = PendingIntent.getActivity(
+        val tapIntent = AlarmLaunchHelper.alarmActivityIntent(context, payload)
+        val tapPending = PendingIntent.getActivity(
             context,
             notificationId,
             tapIntent,
@@ -95,10 +115,10 @@ class AlarmReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
-            .setContentIntent(pendingTap)
-            .setFullScreenIntent(pendingTap, true)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+            .setContentIntent(tapPending)
+            .setDeleteIntent(AlarmNotificationHelper.deletePendingIntent(context, notificationId))
             .setVibrate(longArrayOf(0, 800, 400, 800))
+            .setOngoing(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
@@ -112,15 +132,18 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 }
 
-/// Ringtone compartido entre MainActivity y AlarmReceiver.
+/// Ringtone compartido entre actividades y AlarmReceiver.
 object AlarmSoundHolder {
     private var ringtone: Ringtone? = null
+    private var autoStopRunnable: Runnable? = null
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private const val MAX_RING_MS = 90_000L
 
     fun play(context: Context) {
         stop()
         val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val tone = RingtoneManager.getRingtone(context, uri) ?: return
+        val tone = RingtoneManager.getRingtone(context.applicationContext, uri) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             tone.isLooping = true
         }
@@ -132,9 +155,15 @@ object AlarmSoundHolder {
         }
         ringtone = tone
         tone.play()
+
+        val runnable = Runnable { stop() }
+        autoStopRunnable = runnable
+        handler.postDelayed(runnable, MAX_RING_MS)
     }
 
     fun stop() {
+        autoStopRunnable?.let { handler.removeCallbacks(it) }
+        autoStopRunnable = null
         ringtone?.stop()
         ringtone = null
     }
