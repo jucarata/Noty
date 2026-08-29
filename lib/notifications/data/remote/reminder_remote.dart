@@ -29,8 +29,16 @@ class ReminderRemote {
     );
   }
 
-  RealtimeChannelHandle subscribeToReminderChanges(void Function() onChange) {
-    final handle = _client.subscribeReminderChanges(onChange);
+  bool get isRealtimeConnected => _client.isRealtimeConnected;
+
+  RealtimeChannelHandle subscribeToReminderChanges(
+    void Function() onChange, {
+    void Function()? onSocketLost,
+  }) {
+    final handle = _client.subscribeReminderChanges(
+      onChange,
+      onSocketLost: onSocketLost,
+    );
     return RealtimeChannelHandle(handle.dispose);
   }
 }

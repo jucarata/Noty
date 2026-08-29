@@ -36,8 +36,23 @@ class ReminderSync {
   RealtimeChannelHandle? _realtime;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Timer? _debounce;
+  Timer? _backgroundPoll;
+  Timer? _rebindTimer;
+  void Function()? _onLocalChange;
   var _syncing = false;
+  var _syncQueued = false;
   var _loggedScheduleSkip = false;
+  var _inBackground = false;
+  var _bindingRealtime = false;
+  var _rebindAttempt = 0;
+  DateTime? _lastRealtimeBindAt;
+
+  static const _backgroundPollInterval = Duration(seconds: 20);
+  static const _rebindDelays = [
+    Duration(milliseconds: 700),
+    Duration(seconds: 2),
+    Duration(seconds: 6),
+  ];
 
   Future<String?> ensureOwnDeviceId() async {
     try {
@@ -52,10 +67,8 @@ class ReminderSync {
   }
 
   Future<void> startListening(void Function() onLocalChange) async {
-    await _realtime?.dispose();
-    _realtime = _remote.subscribeToReminderChanges(() {
-      _debouncedSync(onLocalChange);
-    });
+    _onLocalChange = onLocalChange;
+    await _bindRealtime(onLocalChange);
 
     await _connectivitySub?.cancel();
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
@@ -67,9 +80,96 @@ class ReminderSync {
   }
 
   Future<void> stopListening() async {
+    onAppForegrounded();
     _debounce?.cancel();
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+    await _unbindRealtime();
+    _onLocalChange = null;
+  }
+
+  /// `supabase_flutter` desconecta Realtime al pausar la app.
+  /// Mientras el proceso siga vivo, reabrimos el socket y bajamos la nube.
+  Future<void> onAppBackgrounded({required bool realtimeDropped}) async {
+    final onLocalChange = _onLocalChange;
+    if (onLocalChange == null) {
+      return;
+    }
+    _inBackground = true;
+    _backgroundPoll ??= Timer.periodic(_backgroundPollInterval, (_) {
+      unawaited(_recoverInBackground(onLocalChange));
+    });
+    unawaited(sync(onLocalChange: onLocalChange));
+    if (realtimeDropped) {
+      _rebindAttempt = 0;
+      _scheduleRealtimeRebind(onLocalChange);
+    }
+  }
+
+  void onAppForegrounded() {
+    _inBackground = false;
+    _rebindAttempt = 0;
+    _rebindTimer?.cancel();
+    _rebindTimer = null;
+    _backgroundPoll?.cancel();
+    _backgroundPoll = null;
+  }
+
+  void _scheduleRealtimeRebind(void Function() onLocalChange) {
+    if (!_inBackground || _rebindAttempt >= _rebindDelays.length) {
+      return;
+    }
+    _rebindTimer?.cancel();
+    _rebindTimer = Timer(_rebindDelays[_rebindAttempt], () async {
+      if (!_inBackground) {
+        return;
+      }
+      await _recoverInBackground(onLocalChange);
+      if (!_inBackground) {
+        return;
+      }
+      if (_remote.isRealtimeConnected) {
+        return;
+      }
+      _rebindAttempt += 1;
+      _scheduleRealtimeRebind(onLocalChange);
+    });
+  }
+
+  Future<void> _recoverInBackground(void Function() onLocalChange) async {
+    final now = DateTime.now();
+    final recentlyBound = _lastRealtimeBindAt != null &&
+        now.difference(_lastRealtimeBindAt!) < const Duration(seconds: 2);
+    if (!_remote.isRealtimeConnected && !recentlyBound) {
+      await _bindRealtime(onLocalChange);
+    }
+    await sync(onLocalChange: onLocalChange);
+  }
+
+  Future<void> _bindRealtime(void Function() onLocalChange) async {
+    _bindingRealtime = true;
+    try {
+      await _unbindRealtime();
+      _lastRealtimeBindAt = DateTime.now();
+      _realtime = _remote.subscribeToReminderChanges(
+        () => _debouncedSync(onLocalChange),
+        onSocketLost: () {
+          if (_bindingRealtime || !_inBackground) {
+            return;
+          }
+          debugPrint(
+            'Noty realtime: socket perdido en segundo plano; reintento',
+          );
+          _rebindAttempt = 0;
+          _scheduleRealtimeRebind(onLocalChange);
+        },
+      );
+    } finally {
+      _bindingRealtime = false;
+    }
+  }
+
+  Future<void> _unbindRealtime() async {
     await _realtime?.dispose();
     _realtime = null;
   }
@@ -83,6 +183,7 @@ class ReminderSync {
 
   Future<void> sync({void Function()? onLocalChange}) async {
     if (_syncing) {
+      _syncQueued = true;
       return;
     }
     _syncing = true;
@@ -137,6 +238,10 @@ class ReminderSync {
       debugPrint('Noty sync error: $error\n$stack');
     } finally {
       _syncing = false;
+      if (_syncQueued) {
+        _syncQueued = false;
+        unawaited(sync(onLocalChange: onLocalChange));
+      }
     }
   }
 

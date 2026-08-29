@@ -62,8 +62,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      Notificator.instance.onAppForegrounded();
       unawaited(Notificator.instance.refresh());
       unawaited(_checkPermissions());
+      return;
+    }
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      unawaited(
+        Notificator.instance.onAppBackgrounded(
+          realtimeDropped: state == AppLifecycleState.paused,
+        ),
+      );
     }
   }
 

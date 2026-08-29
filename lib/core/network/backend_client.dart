@@ -635,11 +635,19 @@ class BackendClient {
     }
   }
 
+  /// El socket de Realtime está abierto (no implica que el canal ya se unió).
+  bool get isRealtimeConnected => _supabase.realtime.isConnected;
+
   /// Suscripción a cambios de recordatorios. El callback debe ser liviano.
+  ///
+  /// [onSocketLost] se llama si el canal se cierra o falla. Útil en segundo
+  /// plano: `supabase_flutter` corta el WebSocket al pausar la app.
   ({Future<void> Function() dispose}) subscribeReminderChanges(
-    void Function() onChange,
-  ) {
+    void Function() onChange, {
+    void Function()? onSocketLost,
+  }) {
     final userId = currentSession?.userId ?? 'anon';
+    var disposed = false;
     final channel = _supabase
         .channel('noty-reminders-$userId')
         .onPostgresChanges(
@@ -660,10 +668,24 @@ class BackendClient {
           table: 'reminder_responses',
           callback: (_) => onChange(),
         )
-        .subscribe();
+        .subscribe((status, error) {
+          debugPrint(
+            'Noty realtime reminders: $status'
+            '${error == null ? '' : ' $error'}',
+          );
+          if (disposed) {
+            return;
+          }
+          if (status == RealtimeSubscribeStatus.closed ||
+              status == RealtimeSubscribeStatus.channelError ||
+              status == RealtimeSubscribeStatus.timedOut) {
+            onSocketLost?.call();
+          }
+        });
 
     return (
       dispose: () async {
+        disposed = true;
         await _supabase.removeChannel(channel);
       },
     );

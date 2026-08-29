@@ -135,6 +135,22 @@ class Notificator {
     await _sync.sync(onLocalChange: _notifyLocalChange);
   }
 
+  /// La app sigue viva pero ya no se ve. Hay que mantener el sync: el
+  /// cliente de Supabase corta Realtime al pausar.
+  Future<void> onAppBackgrounded({required bool realtimeDropped}) async {
+    if (!_initialized) {
+      return;
+    }
+    await _sync.onAppBackgrounded(realtimeDropped: realtimeDropped);
+  }
+
+  void onAppForegrounded() {
+    if (!_initialized) {
+      return;
+    }
+    _sync.onAppForegrounded();
+  }
+
   /// Quita alarmas pendientes, sonido activo y caché local de recordatorios.
   Future<void> clearLocalAlarmsAndCache() async {
     await AlarmSoundPlayer().stop();

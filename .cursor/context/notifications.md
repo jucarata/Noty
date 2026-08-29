@@ -76,26 +76,28 @@ Padre guarda en nube
 
 | Disparador | Qué pasa |
 |---|---|
-| Supabase Realtime (`reminders`, `reminder_devices`) | Sync con debounce ~400 ms |
+| Supabase Realtime (`reminders`, `reminder_devices`, `reminder_responses`) | Sync con debounce ~400 ms (app en primer plano) |
 | Vuelve internet (`connectivity_plus`) | Sync |
+| App en segundo plano (proceso vivo) | `supabase_flutter` corta el WebSocket al pausar. Noty lo vuelve a abrir y hace fetch HTTP cada ~20 s para programar alarmas sin reabrir la UI |
 | Abre la app / vuelve al foreground (`MainShell`) | `Notificator.refresh()` |
 | Primera vez tras login (`MainShell` → `Notificator.initialize`) | Sync + suscripción Realtime |
 
-**No hay polling.** Un fetch al reconectar o al evento; no un loop.
+En primer plano no hay un loop: un fetch al evento o al reconectar. En segundo plano sí hay un fetch periódico **mientras el proceso sigue vivo**, porque el cliente de Supabase desconecta Realtime al minimizar.
 
 ### Si el padre edita o elimina un reminder
 
 **Sí llega al abuelo**, cuando su teléfono puede sincronizar:
 
 1. El cambio queda en Postgres.
-2. Realtime avisa (si la app está viva con internet) **o** sync al reconectar / abrir app.
+2. Realtime avisa (primer plano) **o** reconexión + fetch en segundo plano **o** sync al reconectar / abrir app.
 3. Se actualiza la caché local.
 4. `rescheduleAll` **cancela** alarmas viejas y **programa** las nuevas.
 
 | Situación del abuelo | ¿Se entera al toque? |
 |---|---|
-| App abierta o en segundo plano con internet | Sí |
-| App cerrada, recupera internet | Sí (al reconectar) |
+| App abierta (primer plano) con internet | Sí (Realtime) |
+| App minimizada, proceso vivo, con internet | Sí (reconexión Realtime + fetch periódico) |
+| App cerrada del todo (proceso muerto) | **No** hasta abrir Noty, recuperar red, o push (pendiente) |
 | Abre la app | Sí |
 | App cerrada, sin internet, padre ya editó/borró | **No** hasta tener red y sincronizar |
 
@@ -161,6 +163,7 @@ Las alarmas se programan **desde la caché local**, no desde la red en el moment
 
 - `initialize(navigatorKey)` — timezone, alarmas, sync, Realtime.
 - `refresh()` — sync manual.
+- `onAppBackgrounded` / `onAppForegrounded` — reconecta Realtime y fetch periódico al minimizar; corta el loop al volver.
 - `canManageReminders` — cuenta real (host/cuidador). La sesión anónima no crea ni edita.
 - `createReminder` / `updateReminder` / `deleteReminder` — nube + refresh. Solo si `canManageReminders`.
 - `listReminders()` — **solo caché local**. La persona acompañada también lista; no muta.

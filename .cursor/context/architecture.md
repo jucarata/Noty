@@ -190,7 +190,7 @@ Estado de UI: Riverpod (o Provider si se mantiene aún más simple). Bloc no es 
 
 SQL canónico: `supabase/migrations/` (`care_identity`, `reminders`).
 
-Auth, vínculo familiar, recordatorios y **caché local + alarmas (Android)** ya están en la app. Mutar usa RPCs `create_reminder`, `update_reminder`, `delete_reminder` y `respond_to_reminder`. Sync vía Realtime + reconexión (sin polling). **iOS sin paridad** — ver `notifications.md` § iOS.
+Auth, vínculo familiar, recordatorios y **caché local + alarmas (Android)** ya están en la app. Mutar usa RPCs `create_reminder`, `update_reminder`, `delete_reminder` y `respond_to_reminder`. Sync vía Realtime en primer plano; en segundo plano se reconecta el socket (supabase lo corta al pausar) y hay fetch periódico mientras el proceso vive. **iOS sin paridad** — ver `notifications.md` § iOS.
 
 ### Idea
 
