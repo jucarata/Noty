@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:noty/care/models/device_share_code.dart';
 import 'package:noty/care/services/care_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
+
+enum _AddDevicePhase { scanning, naming, done }
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key, this.careService});
@@ -18,14 +19,20 @@ class AddDeviceScreen extends StatefulWidget {
 class _AddDeviceScreenState extends State<AddDeviceScreen> {
   late final CareService _care;
   late final MobileScannerController _scanner;
+  late final TextEditingController _nameController;
+  late final FocusNode _nameFocus;
 
+  var _phase = _AddDevicePhase.scanning;
   var _busy = false;
-  var _done = false;
+  String? _pendingPayload;
+  String _chosenName = '';
 
   @override
   void initState() {
     super.initState();
     _care = widget.careService ?? CareService();
+    _nameController = TextEditingController();
+    _nameFocus = FocusNode();
     _scanner = MobileScannerController(
       detectionSpeed: DetectionSpeed.noDuplicates,
       formats: const [BarcodeFormat.qrCode],
@@ -34,12 +41,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _nameFocus.dispose();
     unawaited(_scanner.dispose());
     super.dispose();
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_busy || _done) {
+    if (_busy || _phase != _AddDevicePhase.scanning) {
       return;
     }
 
@@ -56,20 +65,96 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     await _scanner.stop();
 
     try {
-      await _care.addDeviceFromSharePayload(payload);
+      await _care.validateSharePayload(payload);
       if (!mounted) {
         return;
       }
       setState(() {
-        _done = true;
+        _pendingPayload = payload;
+        _phase = _AddDevicePhase.naming;
         _busy = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _nameFocus.requestFocus();
+        }
       });
     } on CareFailure catch (error) {
       await _resumeAfterError(error.message);
     } catch (_) {
       await _resumeAfterError(
-        'No pudimos vincular el dispositivo. Intentémoslo de nuevo.',
+        'No pudimos leer el código. Intentémoslo de nuevo.',
       );
+    }
+  }
+
+  Future<void> _backToScanner() async {
+    if (_busy) {
+      return;
+    }
+    _nameController.clear();
+    _pendingPayload = null;
+    setState(() => _phase = _AddDevicePhase.scanning);
+    try {
+      await _scanner.start();
+    } catch (_) {
+      // errorBuilder de MobileScanner mostrará el fallo de cámara.
+    }
+  }
+
+  Future<void> _submitName() async {
+    final payload = _pendingPayload;
+    if (_busy || payload == null) {
+      return;
+    }
+
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ponle un nombre a este teléfono para reconocerlo en tu familia.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await _care.addDeviceFromSharePayload(payload, customName: name);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _chosenName = name;
+        _phase = _AddDevicePhase.done;
+        _busy = false;
+      });
+    } on CareFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No pudimos vincular el dispositivo. Intentémoslo de nuevo.',
+            ),
+          ),
+        );
     }
   }
 
@@ -90,15 +175,35 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: AppColors.azulNoty,
-        title: const Text('Añadir miembro familiar'),
+    return PopScope(
+      canPop: _phase != _AddDevicePhase.naming,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_backToScanner());
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: AppColors.azulNoty,
+          title: Text(
+            _phase == _AddDevicePhase.naming
+                ? 'Nombre del teléfono'
+                : 'Añadir miembro familiar',
+          ),
+        ),
+        body: SafeArea(child: _body(context)),
       ),
-      body: SafeArea(child: _done ? _success(context) : _scannerBody(context)),
     );
+  }
+
+  Widget _body(BuildContext context) {
+    return switch (_phase) {
+      _AddDevicePhase.scanning => _scannerBody(context),
+      _AddDevicePhase.naming => _nameForm(context),
+      _AddDevicePhase.done => _success(context),
+    };
   }
 
   Widget _scannerBody(BuildContext context) {
@@ -149,7 +254,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   Widget _cameraError(BuildContext context, MobileScannerException error) {
     final message = switch (error.errorCode) {
-      MobileScannerErrorCode.permissionDenied => 'Necesitamos la cámara para leer el código. Actívala en los ajustes del teléfono.',
+      MobileScannerErrorCode.permissionDenied =>
+        'Necesitamos la cámara para leer el código. Actívala en los ajustes del teléfono.',
       MobileScannerErrorCode.unsupported =>
         'Este dispositivo no puede leer códigos. Prueba en un teléfono.',
       _ => 'No pudimos abrir la cámara. Intentémoslo de nuevo.',
@@ -171,6 +277,61 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     );
   }
 
+  Widget _nameForm(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomInset),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '¿Cómo quieres llamar a este teléfono?',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Así lo reconocerás cuando le envíes recordatorios.',
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: AppColors.grisMedio),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _nameController,
+                  focusNode: _nameFocus,
+                  enabled: !_busy,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.done,
+                  autofocus: true,
+                  maxLength: 60,
+                  onSubmitted: (_) => unawaited(_submitName()),
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    hintText: 'Ej. Celular de la abuela',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: _busy ? null : () => unawaited(_submitName()),
+                  child: const Text('Añadir a mi familia'),
+                ),
+                if (_busy) ...[
+                  const SizedBox(height: 16),
+                  const Center(child: CircularProgressIndicator()),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _success(BuildContext context) {
     return Center(
       child: Padding(
@@ -187,7 +348,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                '¡Listo! Ya añadiste a este familiar.',
+                '¡Listo! Añadiste a $_chosenName.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
@@ -196,7 +357,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                'Quedó unido a tu familia. Ya puedes enviarle recordatorios.',
+                'Ya puedes enviarle recordatorios.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge
                     ?.copyWith(color: AppColors.grisMedio),

@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:noty/care/models/device_share_code.dart';
 import 'package:noty/care/models/linked_device.dart';
 import 'package:noty/care/screens/add_device_screen.dart';
 import 'package:noty/care/services/care_service.dart';
 import 'package:noty/core/theme/app_colors.dart';
 import 'package:noty/family/widgets/family_member_card.dart';
+import 'package:noty/notifications/services/notificator.dart';
 
 /// Familiares acompañados vinculados a quien cuida. Solo con cuenta real.
 class FamilyScreen extends StatefulWidget {
@@ -25,6 +25,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   var _loading = true;
   List<LinkedDevice> _members = const [];
   String? _error;
+  String? _unlinkingId;
 
   @override
   void initState() {
@@ -56,6 +57,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         _members = members;
         _error = null;
         _loading = false;
+        _unlinkingId = null;
       });
     } on CareFailure catch (error) {
       _fail(error.message);
@@ -71,6 +73,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
     setState(() {
       _loading = false;
+      _unlinkingId = null;
       if (_members.isEmpty) {
         _error = message;
       }
@@ -80,6 +83,84 @@ class _FamilyScreenState extends State<FamilyScreen> {
       return;
     }
 
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _confirmUnlink(LinkedDevice member) async {
+    if (_unlinkingId != null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('¿Desvincular a ${member.displayName}?'),
+          content: const Text(
+            'Dejará de estar en tu familia y ya no le llegarán los '
+            'recordatorios que le enviaste. Si más adelante usa otro teléfono, '
+            'puedes volver a añadirlo con su código.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFDC2626),
+              ),
+              child: const Text('Desvincular'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() => _unlinkingId = member.id);
+    try {
+      await _care.unlinkFamilyDevice(member.id);
+      try {
+        await Notificator.instance.refresh();
+      } catch (_) {
+        // La lista de familia ya se actualiza; las alarmas se alinean al sync.
+      }
+      if (!mounted) {
+        return;
+      }
+      await _load();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Listo. ${member.displayName} ya no está en tu familia.',
+            ),
+          ),
+        );
+    } on CareFailure catch (error) {
+      _failUnlink(error.message);
+    } catch (_) {
+      _failUnlink(
+        'No pudimos desvincular este familiar. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
+  void _failUnlink(String message) {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _unlinkingId = null);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
@@ -106,9 +187,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Familia',
-                style: Theme.of(context).textTheme.headlineSmall,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Familia',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
+                  IconButton.filled(
+                    onPressed: _openAddMember,
+                    tooltip: 'Añadir miembro familiar',
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.azulNoty,
+                      foregroundColor: AppColors.blanco,
+                      minimumSize: const Size(48, 48),
+                    ),
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
@@ -143,9 +240,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       return _message(
         context,
         text:
-            'Todavía no hay familiares vinculados. Cuando alguien de tu familia muestre su código, puedes añadirlo aquí.',
-        actionLabel: 'Añadir miembro familiar',
-        onAction: _openAddMember,
+            'Todavía no hay familiares vinculados. Pulsa + para añadir el primero.',
       );
     }
 
@@ -154,22 +249,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
-        itemCount: _members.length + 1,
+        itemCount: _members.length,
         separatorBuilder: (context, index) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
-          if (index == _members.length) {
-            return OutlinedButton(
-              onPressed: _openAddMember,
-              child: const Text('Añadir miembro familiar'),
-            );
-          }
-
           final member = _members[index];
           return FamilyMemberCard(
             key: ValueKey(member.id),
             name: member.displayName,
-            phoneDescription: member.phoneDescription,
-            lastSeenLabel: member.lastSeenLabel,
+            phoneModel: member.brandModel,
+            unlinking: _unlinkingId == member.id,
+            onUnlink: _unlinkingId == null
+                ? () => unawaited(_confirmUnlink(member))
+                : null,
           );
         },
       ),
@@ -179,8 +270,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Widget _message(
     BuildContext context, {
     required String text,
-    required String actionLabel,
-    required VoidCallback onAction,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     return Center(
       child: ConstrainedBox(
@@ -194,8 +285,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
               style: Theme.of(context).textTheme.bodyLarge
                   ?.copyWith(color: AppColors.grisMedio),
             ),
-            const SizedBox(height: 24),
-            FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            ],
           ],
         ),
       ),

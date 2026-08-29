@@ -5,6 +5,8 @@ import 'package:noty/care/models/device_share_code.dart';
 import 'package:noty/care/models/linked_device.dart';
 import 'package:noty/core/network/backend_client.dart';
 
+export 'package:noty/care/models/device_share_code.dart' show CareFailure;
+
 /// Fachada de vínculo entre dispositivos.
 ///
 /// Las pantallas hablan solo con esta clase. No importan Supabase ni
@@ -76,24 +78,39 @@ class CareService {
     }
   }
 
-  /// Lee el QR de otro teléfono y lo une a la familia de quien escanea.
-  Future<void> addDeviceFromSharePayload(String payload) async {
-    final code = DeviceShareCode.tryParse(payload);
-    if (code == null) {
+  /// Comprueba el QR sin vincular: que sea de Noty y no de este teléfono.
+  Future<void> validateSharePayload(String payload) async {
+    try {
+      await _codeFromPayload(payload);
+    } on CareFailure {
+      rethrow;
+    } catch (_) {
       throw const CareFailure(
-        'Ese código no es de Noty. Pide que vuelva a mostrarlo.',
+        'No pudimos leer el código. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
+  /// Lee el QR de otro teléfono y lo une a la familia de quien escanea.
+  ///
+  /// [customName] queda como el nombre visible de ese dispositivo.
+  Future<void> addDeviceFromSharePayload(
+    String payload, {
+    required String customName,
+  }) async {
+    final name = customName.trim();
+    if (name.isEmpty) {
+      throw const CareFailure(
+        'Ponle un nombre a este teléfono para reconocerlo en tu familia.',
       );
     }
 
     try {
-      final ownId = await _identityStore.getOrCreateInstallId();
-      if (code.installId.toLowerCase() == ownId.toLowerCase()) {
-        throw const CareFailure(
-          'Ese es este mismo teléfono. Pide el código del otro dispositivo.',
-        );
-      }
-
-      await _client.linkDeviceToFamily(installId: code.installId);
+      final code = await _codeFromPayload(payload);
+      await _client.linkDeviceToFamily(
+        installId: code.installId,
+        customName: name,
+      );
     } on CareFailure {
       rethrow;
     } on BackendAuthException catch (error) {
@@ -101,6 +118,37 @@ class CareService {
     } catch (_) {
       throw const CareFailure(
         'No pudimos vincular el dispositivo. Intentémoslo de nuevo.',
+      );
+    }
+  }
+
+  Future<DeviceShareCode> _codeFromPayload(String payload) async {
+    final code = DeviceShareCode.tryParse(payload);
+    if (code == null) {
+      throw const CareFailure(
+        'Ese código no es de Noty. Pide que vuelva a mostrarlo.',
+      );
+    }
+
+    final ownId = await _identityStore.getOrCreateInstallId();
+    if (code.installId.toLowerCase() == ownId.toLowerCase()) {
+      throw const CareFailure(
+        'Ese es este mismo teléfono. Pide el código del otro dispositivo.',
+      );
+    }
+    return code;
+  }
+
+  /// Saca un familiar de tu grupo. Dejan de sonarle los recordatorios
+  /// que le habías asignado. Otros padres que lo acompañen no se tocan.
+  Future<void> unlinkFamilyDevice(String deviceId) async {
+    try {
+      await _client.unlinkDeviceFromFamily(deviceId: deviceId);
+    } on BackendAuthException catch (error) {
+      throw CareFailure(_copyForUnlink(error));
+    } catch (_) {
+      throw const CareFailure(
+        'No pudimos desvincular este familiar. Intentémoslo de nuevo.',
       );
     }
   }
@@ -158,5 +206,22 @@ class CareService {
       return 'Para ver tu familia, entra o crea una cuenta.';
     }
     return 'No pudimos cargar tu familia. Intentémoslo de nuevo.';
+  }
+
+  String _copyForUnlink(BackendAuthException error) {
+    if (error.code == 'missing_session' ||
+        error.code == 'anonymous_not_allowed') {
+      return 'Para desvincular un familiar, entra o crea una cuenta.';
+    }
+
+    final message = error.message.trim();
+    if (message.contains('No encontramos ese familiar')) {
+      return 'Ese familiar ya no está en tu grupo.';
+    }
+    if (message.contains('Inicia sesión') || message.contains('Debes entrar')) {
+      return 'Para desvincular un familiar, entra o crea una cuenta.';
+    }
+
+    return 'No pudimos desvincular este familiar. Intentémoslo de nuevo.';
   }
 }

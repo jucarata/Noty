@@ -304,9 +304,11 @@ class BackendClient {
   ///
   /// Si aún no hay familia, el RPC crea “Mi familia”. El device queda como
   /// acompañado: el host y el resto de miembros del grupo quedan relacionados.
+  /// [customName] es el nombre con el que quien cuida reconocerá ese teléfono.
   Future<void> linkDeviceToFamily({
     required String installId,
     String? familyId,
+    String? customName,
   }) async {
     final session = currentSession;
     if (session == null) {
@@ -322,10 +324,42 @@ class BackendClient {
       );
     }
 
+    final named = customName?.trim();
     try {
       await _supabase.rpc(
         'link_device_to_family',
-        params: {'p_install_id': installId, 'p_family_id': ?familyId},
+        params: {
+          'p_install_id': installId,
+          'p_family_id': ?familyId,
+          'p_custom_name': ?named,
+        },
+      );
+    } on PostgrestException catch (error) {
+      throw BackendAuthException(error.message, code: error.code);
+    }
+  }
+
+  /// Saca el device de la familia de quien llama y los recordatorios que
+  /// ese grupo le había asignado. El teléfono en sí no se borra.
+  Future<void> unlinkDeviceFromFamily({required String deviceId}) async {
+    final session = currentSession;
+    if (session == null) {
+      throw const BackendAuthException(
+        'Debes entrar a la app para desvincular un dispositivo.',
+        code: 'missing_session',
+      );
+    }
+    if (session.isAnonymous) {
+      throw const BackendAuthException(
+        'Inicia sesión para desvincular un dispositivo.',
+        code: 'anonymous_not_allowed',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'unlink_device_from_family',
+        params: {'p_device_id': deviceId},
       );
     } on PostgrestException catch (error) {
       throw BackendAuthException(error.message, code: error.code);
