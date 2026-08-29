@@ -63,7 +63,7 @@ class ReminderCache {
 
     return [
       for (final row in decoded)
-        if (row is Map<String, dynamic>) Reminder.fromMap(row),
+        if (row is Map) Reminder.fromMap(Map<String, dynamic>.from(row)),
     ];
   }
 
@@ -97,7 +97,8 @@ class ReminderCache {
 
     return [
       for (final row in decoded)
-        if (row is Map<String, dynamic>) PendingReminderResponse.fromMap(row),
+        if (row is Map)
+          PendingReminderResponse.fromMap(Map<String, dynamic>.from(row)),
     ];
   }
 

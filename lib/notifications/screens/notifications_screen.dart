@@ -255,7 +255,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
         itemCount: _reminders.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 16),
+        separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final reminder = _reminders[index];
           return ReminderCard(
@@ -265,12 +265,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             timeLabel: reminder.timeLabel,
             nextDayLabel: reminder.nextDayLabel,
             deviceLabel: reminder.deviceLabel,
-            isActive: reminder.isActive,
+            isActive: reminder.isEffectivelyActive,
             onTap: canManage ? () => unawaited(_openEdit(reminder)) : null,
+            responseLabel: canManage ? _caregiverResponseLabel(reminder) : null,
           );
         },
       ),
     );
+  }
+
+  String? _caregiverResponseLabel(Reminder reminder) {
+    final dueAt = reminder.lastDueAt();
+    if (dueAt == null) {
+      return null;
+    }
+    final response = reminder.responseAt(dueAt);
+    if (response == null) {
+      return null;
+    }
+    return response.isConfirmed ? 'Confirmó esta tarea.' : 'No se confirmó.';
   }
 
   Widget _message(

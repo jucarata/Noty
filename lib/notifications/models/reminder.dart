@@ -21,6 +21,7 @@ class Reminder {
     required this.isActive,
     this.description,
     this.runDays,
+    this.responses = const [],
   });
 
   final String id;
@@ -43,6 +44,10 @@ class Reminder {
   final bool singleUse;
   final bool isActive;
   final List<ReminderDevice> devices;
+  final List<ReminderResponse> responses;
+
+  /// Si no confirma en este tiempo, la ocurrencia pasa a ignored.
+  static const responseGrace = Duration(seconds: 90);
 
   factory Reminder.fromMap(Map<String, dynamic> map) {
     final time = _parseTime(map['time_local']);
@@ -67,6 +72,7 @@ class Reminder {
       singleUse: map['single_use'] == true,
       isActive: map['is_active'] != false,
       devices: _parseDevices(map['reminder_devices']),
+      responses: _parseResponses(map['reminder_responses']),
     );
   }
 
@@ -100,6 +106,9 @@ class Reminder {
             },
           },
       ],
+      'reminder_responses': [
+        for (final response in responses) response.toMap(),
+      ],
     };
   }
 
@@ -129,6 +138,118 @@ class Reminder {
     return devices.any((device) => device.id == deviceId);
   }
 
+  /// Activa en la UI solo si aún puede sonar. Si ya no hay avisos, inactiva.
+  bool get isEffectivelyActive => isActive && nextScheduledAt != null;
+
+  Reminder copyWith({
+    bool? isActive,
+    List<ReminderResponse>? responses,
+  }) {
+    return Reminder(
+      id: id,
+      name: name,
+      description: description,
+      hour: hour,
+      minute: minute,
+      timezone: timezone,
+      startDate: startDate,
+      createdAt: createdAt,
+      everyDay: everyDay,
+      monday: monday,
+      tuesday: tuesday,
+      wednesday: wednesday,
+      thursday: thursday,
+      friday: friday,
+      saturday: saturday,
+      sunday: sunday,
+      runDays: runDays,
+      singleUse: singleUse,
+      isActive: isActive ?? this.isActive,
+      devices: devices,
+      responses: responses ?? this.responses,
+    );
+  }
+
+  /// Última ocurrencia que ya debía sonar (hora de pared), o null.
+  DateTime? lastDueAt([DateTime? now]) {
+    final at = now ?? DateTime.now();
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    var cursor = DateTime(at.year, at.month, at.day);
+
+    for (var i = 0; i < 800; i++) {
+      if (_hasAlarmOn(cursor)) {
+        final ring = DateTime(
+          cursor.year,
+          cursor.month,
+          cursor.day,
+          hour,
+          minute,
+        );
+        if (!ring.isAfter(at)) {
+          return ring;
+        }
+      }
+      cursor = cursor.subtract(const Duration(days: 1));
+      if (cursor.isBefore(start)) {
+        break;
+      }
+    }
+    return null;
+  }
+
+  /// Respuesta de este teléfono (o la más favorable) para [dueAt].
+  ReminderResponse? responseAt(DateTime dueAt, {String? deviceId}) {
+    final matches = [
+      for (final row in responses)
+        if (row.sameDue(dueAt) &&
+            (deviceId == null ||
+                row.deviceId == null ||
+                row.deviceId == deviceId))
+          row,
+    ];
+    for (final row in matches) {
+      if (row.isConfirmed) {
+        return row;
+      }
+    }
+    if (matches.isEmpty) {
+      return null;
+    }
+    return matches.first;
+  }
+
+  bool isLastDueConfirmed({String? deviceId, DateTime? now}) {
+    final due = lastDueAt(now);
+    if (due == null) {
+      return false;
+    }
+    return responseAt(due, deviceId: deviceId)?.isConfirmed == true;
+  }
+
+  bool isLastDueIgnored({String? deviceId, DateTime? now}) {
+    final due = lastDueAt(now);
+    if (due == null) {
+      return false;
+    }
+    return responseAt(due, deviceId: deviceId)?.isIgnored == true;
+  }
+
+  /// Ya pasó el tiempo de gracia y este teléfono no confirmó.
+  bool shouldIgnoreLastDue({required String deviceId, DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final due = lastDueAt(at);
+    if (due == null) {
+      return false;
+    }
+    if (!ringsOnDevice(deviceId)) {
+      return false;
+    }
+    if (responseAt(due, deviceId: deviceId) != null) {
+      return false;
+    }
+    return !at.isBefore(due.add(responseGrace));
+  }
+
   static String _formatDateOnly(DateTime date) {
     final year = date.year.toString().padLeft(4, '0');
     final month = date.month.toString().padLeft(2, '0');
@@ -139,11 +260,11 @@ class Reminder {
   /// Hora visible. Ej. A las 8:00 a. m.
   String get timeLabel => 'A las ${_formatTime(hour, minute)}';
 
-  /// Día del próximo aviso: Hoy, Mañana o la fecha.
+  /// Línea de próximo aviso: "Próximo aviso: Hoy" o "Finalizado".
   String get nextDayLabel {
-    final next = nextAt;
+    final next = nextScheduledAt;
     if (next == null) {
-      return 'Ya no hay más avisos';
+      return 'Finalizado';
     }
 
     final now = DateTime.now();
@@ -152,15 +273,15 @@ class Reminder {
     final month = _months[day.month - 1];
 
     if (day == today) {
-      return 'Hoy';
+      return 'Próximo aviso: Hoy';
     }
     if (day == today.add(const Duration(days: 1))) {
-      return 'Mañana';
+      return 'Próximo aviso: Mañana';
     }
     if (day.year == now.year) {
-      return '${day.day} de $month';
+      return 'Próximo aviso: ${day.day} de $month';
     }
-    return '${day.day} de $month de ${day.year}';
+    return 'Próximo aviso: ${day.day} de $month de ${day.year}';
   }
 
   /// Familiares / teléfonos donde suena.
@@ -179,12 +300,16 @@ class Reminder {
     return 'Para $head y ${names.last}';
   }
 
-  /// Próximo instante de alarma en la hora local del teléfono, o null.
+  /// Próximo instante de alarma si sigue activa, o null.
   DateTime? get nextAt {
     if (!isActive) {
       return null;
     }
+    return nextScheduledAt;
+  }
 
+  /// Próxima fecha de aviso según el calendario, aunque esté inactiva.
+  DateTime? get nextScheduledAt {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final start = DateTime(startDate.year, startDate.month, startDate.day);
@@ -342,6 +467,23 @@ class Reminder {
     return text;
   }
 
+  static List<ReminderResponse> _parseResponses(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    final responses = <ReminderResponse>[];
+    for (final row in value) {
+      if (row is! Map) {
+        continue;
+      }
+      final parsed = ReminderResponse.tryParse(Map<String, dynamic>.from(row));
+      if (parsed != null) {
+        responses.add(parsed);
+      }
+    }
+    return responses;
+  }
+
   static List<ReminderDevice> _parseDevices(dynamic value) {
     if (value is! List) {
       return const [];
@@ -365,6 +507,66 @@ class Reminder {
       );
     }
     return devices;
+  }
+}
+
+/// Respuesta a una ocurrencia: confirmed o ignored.
+class ReminderResponse {
+  const ReminderResponse({
+    required this.dueAt,
+    required this.response,
+    required this.respondedAt,
+    this.deviceId,
+  });
+
+  final DateTime dueAt;
+  final String response;
+  final DateTime respondedAt;
+  final String? deviceId;
+
+  bool get isConfirmed => response == 'confirmed';
+  bool get isIgnored => response == 'ignored';
+
+  bool sameDue(DateTime other) {
+    final a = dueAt.toUtc();
+    final b = other.toUtc();
+    return a.year == b.year &&
+        a.month == b.month &&
+        a.day == b.day &&
+        a.hour == b.hour &&
+        a.minute == b.minute;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'device_id': deviceId,
+      'response': response,
+      'due_at': dueAt.toUtc().toIso8601String(),
+      'responded_at': respondedAt.toUtc().toIso8601String(),
+    };
+  }
+
+  static ReminderResponse? tryParse(Map<String, dynamic> map) {
+    final response = (map['response'] as String?)?.trim();
+    if (response != 'confirmed' && response != 'ignored') {
+      return null;
+    }
+    final dueRaw = map['due_at'];
+    final dueParsed = dueRaw is String ? DateTime.tryParse(dueRaw) : null;
+    if (dueParsed == null) {
+      return null;
+    }
+    final respondedRaw = map['responded_at'];
+    final respondedParsed = respondedRaw is String
+        ? DateTime.tryParse(respondedRaw)
+        : null;
+    final deviceId = map['device_id'] as String?;
+    return ReminderResponse(
+      dueAt: dueParsed.toUtc(),
+      response: response!,
+      respondedAt: respondedParsed?.toUtc() ?? DateTime.now().toUtc(),
+      deviceId: deviceId == null || deviceId.isEmpty ? null : deviceId,
+    );
   }
 }
 

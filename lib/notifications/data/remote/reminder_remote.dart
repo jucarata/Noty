@@ -9,6 +9,7 @@ class ReminderRemote {
   final BackendClient _client;
 
   Future<List<Reminder>> fetchReminders() async {
+    await _client.expireFinishedReminders();
     final rows = await _client.fetchReminders();
     return [
       for (final row in rows)

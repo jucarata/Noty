@@ -12,6 +12,7 @@ class ReminderCard extends StatelessWidget {
     required this.isActive,
     this.description,
     this.onTap,
+    this.responseLabel,
   });
 
   final String name;
@@ -21,6 +22,7 @@ class ReminderCard extends StatelessWidget {
   final String deviceLabel;
   final bool isActive;
   final VoidCallback? onTap;
+  final String? responseLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +32,8 @@ class ReminderCard extends StatelessWidget {
       container: true,
       button: onTap != null,
       label:
-          '$name. ${isActive ? 'Activa' : 'Inactiva'}. $timeLabel. $nextDayLabel. $deviceLabel',
+          '$name. ${isActive ? 'Activa' : 'Inactiva'}. $timeLabel. $nextDayLabel. $deviceLabel'
+          '${responseLabel == null ? '' : '. $responseLabel'}',
       child: Material(
         color: AppColors.blanco,
         borderRadius: BorderRadius.circular(16),
@@ -43,7 +46,7 @@ class ReminderCard extends StatelessWidget {
               border: Border.all(color: AppColors.grisClaro),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -53,16 +56,16 @@ class ReminderCard extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: SizedBox(
-                      width: 48,
-                      height: 48,
+                      width: 40,
+                      height: 40,
                       child: Icon(
                         Icons.notifications_rounded,
                         color: AppColors.azulNoty,
-                        size: 26,
+                        size: 22,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -72,7 +75,9 @@ class ReminderCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 name,
-                                style: theme.textTheme.titleLarge,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -80,35 +85,45 @@ class ReminderCard extends StatelessWidget {
                           ],
                         ),
                         if (description != null) ...[
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Text(
                             description!,
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: AppColors.grisMedio,
                             ),
                           ),
                         ],
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         Text(
                           timeLabel,
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: AppColors.grisOscuro,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
-                          'Próximo aviso: $nextDayLabel',
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                          nextDayLabel,
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: AppColors.grisMedio,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           deviceLabel,
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: AppColors.grisMedio,
                           ),
                         ),
+                        if (responseLabel != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            responseLabel!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: AppColors.grisOscuro,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

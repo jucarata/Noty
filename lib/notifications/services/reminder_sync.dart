@@ -89,11 +89,24 @@ class ReminderSync {
     try {
       await _flushPendingResponses();
       final previous = await _cache.readReminders();
-      final reminders = await _remote.fetchReminders();
+      final deviceId = await ensureOwnDeviceId();
+      var reminders = [
+        for (final reminder in await _remote.fetchReminders())
+          reminder.isEffectivelyActive
+              ? reminder
+              : reminder.copyWith(isActive: false),
+      ];
+      reminders = _mergePendingResponses(
+        reminders,
+        await _cache.readPendingResponses(),
+      );
+      reminders = await _ignoreOverdueOccurrences(
+        reminders: reminders,
+        deviceId: deviceId,
+      );
       final changed = !_sameReminders(previous, reminders);
       await _cache.writeReminders(reminders);
 
-      final deviceId = await ensureOwnDeviceId();
       if (deviceId == null) {
         debugPrint('Noty sync: sin devices.id local; no se programan alarmas');
       } else {
@@ -165,40 +178,43 @@ class ReminderSync {
     required DateTime dueAt,
     required String response,
   }) async {
+    final deviceId = await _registry.readDeviceId();
+    final reminders = await _cache.readReminders();
+    Reminder? current;
+    for (final reminder in reminders) {
+      if (reminder.id == reminderId) {
+        current = reminder;
+        break;
+      }
+    }
+    if (current?.responseAt(dueAt, deviceId: deviceId) != null) {
+      await _scheduler.dismissActiveNotification(reminderId);
+      return;
+    }
+
+    final dueUtc = dueAt.toUtc();
+    final respondedAt = DateTime.now().toUtc();
     await _cache.enqueueResponse(
       PendingReminderResponse(
         reminderId: reminderId,
-        dueAt: dueAt.toUtc(),
+        dueAt: dueUtc,
         response: response,
-        respondedAt: DateTime.now().toUtc(),
+        respondedAt: respondedAt,
       ),
     );
 
-    final reminders = await _cache.readReminders();
+    final local = ReminderResponse(
+      dueAt: dueUtc,
+      response: response,
+      respondedAt: respondedAt,
+      deviceId: deviceId,
+    );
     final updated = [
       for (final reminder in reminders)
-        if (reminder.id == reminderId && reminder.singleUse)
-          Reminder(
-            id: reminder.id,
-            name: reminder.name,
-            description: reminder.description,
-            hour: reminder.hour,
-            minute: reminder.minute,
-            timezone: reminder.timezone,
-            startDate: reminder.startDate,
-            createdAt: reminder.createdAt,
-            everyDay: reminder.everyDay,
-            monday: reminder.monday,
-            tuesday: reminder.tuesday,
-            wednesday: reminder.wednesday,
-            thursday: reminder.thursday,
-            friday: reminder.friday,
-            saturday: reminder.saturday,
-            sunday: reminder.sunday,
-            runDays: reminder.runDays,
-            singleUse: reminder.singleUse,
-            isActive: false,
-            devices: reminder.devices,
+        if (reminder.id == reminderId)
+          reminder.copyWith(
+            isActive: reminder.nextAtAfter(dueAt) == null ? false : null,
+            responses: _upsertResponse(reminder.responses, local),
           )
         else
           reminder,
@@ -206,7 +222,6 @@ class ReminderSync {
     await _cache.writeReminders(updated);
 
     await _scheduler.dismissActiveNotification(reminderId);
-    final deviceId = await _registry.readDeviceId();
     if (deviceId != null) {
       await _scheduler.rescheduleAll(reminders: updated, deviceId: deviceId);
     }
@@ -237,6 +252,111 @@ class ReminderSync {
     } finally {
       _syncing = false;
     }
+  }
+
+  List<Reminder> _mergePendingResponses(
+    List<Reminder> reminders,
+    List<PendingReminderResponse> pending,
+  ) {
+    if (pending.isEmpty) {
+      return reminders;
+    }
+
+    return [
+      for (final reminder in reminders)
+        reminder.copyWith(
+          responses: _applyPendingToResponses(reminder, pending),
+        ),
+    ];
+  }
+
+  List<ReminderResponse> _applyPendingToResponses(
+    Reminder reminder,
+    List<PendingReminderResponse> pending,
+  ) {
+    var responses = reminder.responses;
+    for (final row in pending) {
+      if (row.reminderId != reminder.id) {
+        continue;
+      }
+      responses = _upsertResponse(
+        responses,
+        ReminderResponse(
+          dueAt: row.dueAt,
+          response: row.response,
+          respondedAt: row.respondedAt,
+        ),
+      );
+    }
+    return responses;
+  }
+
+  Future<List<Reminder>> _ignoreOverdueOccurrences({
+    required List<Reminder> reminders,
+    required String? deviceId,
+  }) async {
+    if (deviceId == null) {
+      return reminders;
+    }
+
+    var updated = reminders;
+    var didIgnore = false;
+    final now = DateTime.now();
+    for (final reminder in reminders) {
+      if (!reminder.shouldIgnoreLastDue(deviceId: deviceId, now: now)) {
+        continue;
+      }
+      final due = reminder.lastDueAt(now);
+      if (due == null) {
+        continue;
+      }
+      didIgnore = true;
+      final respondedAt = DateTime.now().toUtc();
+      final local = ReminderResponse(
+        dueAt: due.toUtc(),
+        response: 'ignored',
+        respondedAt: respondedAt,
+        deviceId: deviceId,
+      );
+      await _cache.enqueueResponse(
+        PendingReminderResponse(
+          reminderId: reminder.id,
+          dueAt: due.toUtc(),
+          response: 'ignored',
+          respondedAt: respondedAt,
+        ),
+      );
+      updated = [
+        for (final row in updated)
+          if (row.id == reminder.id)
+            row.copyWith(
+              isActive: row.nextAtAfter(due) == null ? false : null,
+              responses: _upsertResponse(row.responses, local),
+            )
+          else
+            row,
+      ];
+    }
+
+    if (didIgnore) {
+      await _flushPendingResponses();
+    }
+    return updated;
+  }
+
+  List<ReminderResponse> _upsertResponse(
+    List<ReminderResponse> current,
+    ReminderResponse incoming,
+  ) {
+    for (final row in current) {
+      final sameDevice = incoming.deviceId == null ||
+          row.deviceId == null ||
+          row.deviceId == incoming.deviceId;
+      if (row.sameDue(incoming.dueAt) && sameDevice) {
+        return current;
+      }
+    }
+    return [...current, incoming];
   }
 
   bool _sameReminders(List<Reminder> a, List<Reminder> b) {

@@ -654,6 +654,12 @@ class BackendClient {
           table: 'reminder_devices',
           callback: (_) => onChange(),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'reminder_responses',
+          callback: (_) => onChange(),
+        )
         .subscribe();
 
     return (
@@ -661,6 +667,19 @@ class BackendClient {
         await _supabase.removeChannel(channel);
       },
     );
+  }
+
+  /// Apaga en la nube los recordatorios que ya no tienen más avisos.
+  Future<void> expireFinishedReminders() async {
+    if (currentSession == null) {
+      return;
+    }
+
+    try {
+      await _supabase.rpc('expire_finished_reminders');
+    } on PostgrestException catch (error) {
+      debugPrint('Noty expire finished reminders: ${error.message}');
+    }
   }
 
   /// Recordatorios vigentes de quien llama, con los devices asignados.
@@ -679,7 +698,8 @@ class BackendClient {
             'id, name, description, time_local, timezone, start_date, '
             'every_day, monday, tuesday, wednesday, thursday, friday, '
             'saturday, sunday, run_days, single_use, is_active, created_at, '
-            'reminder_devices(devices(id, custom_name, brand, model))',
+            'reminder_devices(devices(id, custom_name, brand, model)), '
+            'reminder_responses(response, due_at, device_id, responded_at)',
           )
           .isFilter('deleted_at', null)
           .order('created_at', ascending: false);

@@ -23,8 +23,6 @@ class AlarmRingScreen extends StatefulWidget {
   final AlarmSoundPlayer? soundPlayer;
   final bool overlayMode;
 
-  static const autoDismissDuration = Duration(seconds: 90);
-
   @override
   State<AlarmRingScreen> createState() => _AlarmRingScreenState();
 }
@@ -41,7 +39,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen> {
     _notificator = widget.notificator ?? Notificator.instance;
     _soundPlayer = widget.soundPlayer ?? AlarmSoundPlayer();
     // El sonido ya lo inició AlarmReceiver; no volver a llamar playAlarm aquí.
-    _autoDismissTimer = Timer(AlarmRingScreen.autoDismissDuration, () {
+    _autoDismissTimer = Timer(Reminder.responseGrace, () {
       unawaited(_dismissTimedOut());
     });
   }
